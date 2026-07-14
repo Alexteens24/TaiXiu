@@ -1,20 +1,21 @@
 package com.cortezromeo.taixiu.support.version.cross;
 
 import com.cortezromeo.taixiu.api.server.VersionSupport;
-import com.cryptomorin.xseries.XMaterial;
-import com.cryptomorin.xseries.XSound;
-import com.cryptomorin.xseries.profiles.builder.XSkull;
-import com.cryptomorin.xseries.profiles.objects.ProfileInputType;
-import com.cryptomorin.xseries.profiles.objects.Profileable;
-import de.tr7zw.changeme.nbtapi.NBT;
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
-import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,62 +25,65 @@ import static org.bukkit.ChatColor.COLOR_CHAR;
 public class CrossVersionSupport extends VersionSupport {
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
     private static final Pattern STRIP_COLOR_PATTERN = Pattern.compile("(?i)&[0-9A-FK-OR]");
-    private static final String NBT_KEY = "TaiXiu";
+    private final NamespacedKey customDataKey;
 
     public CrossVersionSupport(Plugin plugin) {
         super(plugin);
+        this.customDataKey = new NamespacedKey(plugin, "custom_data");
     }
 
     @Override
     public ItemStack createItemStack(String material, int amount, short data) {
-        return XMaterial.matchXMaterial(material + ":" + data)
-                .map(XMaterial::parseItem)
-                .map(item -> {
-                    item.setAmount(amount);
-                    return item;
-                })
-                .orElseGet(() -> {
+        Material matched = Material.matchMaterial(material);
+        if (matched == null || matched.isAir()) {
                     getPlugin().getLogger().severe("----------------------------------------------------");
                     getPlugin().getLogger().severe("INVALID MATERIAL: " + material);
                     getPlugin().getLogger().severe("The material name may be incorrect or not available in this server version.");
                     getPlugin().getLogger().severe(">> Reference Material List <<");
                     getPlugin().getLogger().severe("https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Material.html");
                     getPlugin().getLogger().severe("----------------------------------------------------");
-                    return new ItemStack(Material.BEDROCK);
-                });
+            matched = Material.BEDROCK;
+        }
+        return new ItemStack(matched, Math.max(1, amount));
     }
 
     @Override
     public Sound createSound(String soundName) {
-        return XSound.matchXSound(soundName).map(XSound::parseSound).orElseGet(() -> {
+        String key = soundName.toLowerCase(Locale.ROOT).replace('_', '.');
+        Sound sound = Registry.SOUNDS.get(NamespacedKey.minecraft(key));
+        if (sound == null) {
             getPlugin().getLogger().severe("----------------------------------------------------");
             getPlugin().getLogger().severe("INVALID SOUND NAME: " + soundName);
             getPlugin().getLogger().severe("The sound name may be incorrect or not supported in this server version.");
             getPlugin().getLogger().severe(">> Reference Sound List <<");
             getPlugin().getLogger().severe("https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Sound.html");
             getPlugin().getLogger().severe("----------------------------------------------------");
-            return XSound.BLOCK_AMETHYST_CLUSTER_BREAK.parseSound();
-        });
+            return Registry.SOUNDS.get(NamespacedKey.minecraft("block.amethyst_cluster.break"));
+        }
+        return sound;
     }
 
     @Override
     public ItemStack getHeadItemFromBase64(String headValue) {
-        return XSkull.createItem().profile(Profileable.of(ProfileInputType.BASE64, headValue)).apply();
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) item.getItemMeta();
+        PlayerProfile profile = Bukkit.getServer().createProfile(UUID.randomUUID());
+        profile.setProperty(new ProfileProperty("textures", headValue));
+        meta.setPlayerProfile(profile);
+        item.setItemMeta(meta);
+        return item;
     }
 
     public ItemStack getHeadItemFromPlayerName(String playerName) {
-        try {
-            if (Bukkit.getPlayer(playerName) != null)
-                playerName = Bukkit.getPlayer(playerName).getUniqueId().toString();
-            else if (!Bukkit.getServer().getOnlineMode()) {
-                String offlinePlayerString = "OfflinePlayer:" + playerName;
-                playerName = UUID.nameUUIDFromBytes(offlinePlayerString.getBytes(StandardCharsets.UTF_8)).toString();
-            }
-            return XSkull.createItem().profile(Profileable.of(UUID.fromString(playerName))).apply();
-            // normally, if this account is not a part of microsoft account, it will occur error
-        } catch (Exception exception) {
-            return XMaterial.PLAYER_HEAD.parseItem();
-        }
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) item.getItemMeta();
+        org.bukkit.entity.Player online = Bukkit.getPlayerExact(playerName);
+        PlayerProfile profile = online == null
+                ? Bukkit.getServer().createProfile(playerName)
+                : Bukkit.getServer().createProfile(online.getUniqueId(), online.getName());
+        meta.setPlayerProfile(profile);
+        item.setItemMeta(meta);
+        return item;
     }
 
     @Override
@@ -90,10 +94,9 @@ public class CrossVersionSupport extends VersionSupport {
         if (itemStack.getType() == Material.AIR)
             return null;
 
-        NBT.modify(itemStack, nbt -> {
-            nbt.setString(NBT_KEY + ".customdata", data);
-        });
-
+        ItemMeta meta = itemStack.getItemMeta();
+        meta.getPersistentDataContainer().set(customDataKey, PersistentDataType.STRING, data);
+        itemStack.setItemMeta(meta);
         return itemStack;
     }
 
@@ -105,7 +108,8 @@ public class CrossVersionSupport extends VersionSupport {
         if (itemStack.getType() == Material.AIR)
             return null;
 
-        return NBT.get(itemStack, nbt -> (String) (nbt.getString(NBT_KEY + ".customdata")));
+        ItemMeta meta = itemStack.getItemMeta();
+        return meta.getPersistentDataContainer().get(customDataKey, PersistentDataType.STRING);
     }
 
     @Override

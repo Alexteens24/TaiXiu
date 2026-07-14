@@ -5,55 +5,87 @@ import com.cortezromeo.taixiu.api.TaiXiuResult;
 import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
-import org.bukkit.entity.Player;
 import org.json.JSONObject;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
-public class DiscordSupport {
+public class DiscordSupport implements AutoCloseable {
 
-    String webHookURL;
+    private final String webHookURL;
+    private final ThreadPoolExecutor executor;
+    private final Map<Path, CachedTemplate> templates = new ConcurrentHashMap<>();
+    private final AtomicLong droppedMessages = new AtomicLong();
 
     public DiscordSupport(String webHookURL) {
         this.webHookURL = webHookURL;
+        int capacity = TaiXiu.plugin == null ? 256
+                : Math.max(16, TaiXiu.plugin.getConfig().getInt("discord-webhook-settings.queue-capacity", 256));
+        this.executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(capacity), runnable -> {
+                    Thread thread = new Thread(runnable, "TaiXiu-Discord");
+                    thread.setDaemon(true);
+                    return thread;
+                }, (task, pool) -> {
+                    long dropped = droppedMessages.incrementAndGet();
+                    if (dropped == 1 || dropped % 100 == 0)
+                        MessageUtil.throwErrorMessage("Discord webhook queue full; dropped " + dropped + " message(s)");
+                });
     }
 
     public void sendMessage(String message) {
-        DiscordWebhook discordWebhook = new DiscordWebhook(webHookURL);
-        if (webHookURL == null || webHookURL.equals(""))
-            return;
-
-        TaiXiu.support.getFoliaLib().getScheduler().runAsync(task -> {
+        submit(() -> {
+            DiscordWebhook discordWebhook = new DiscordWebhook(webHookURL);
             discordWebhook.addEmbed(new DiscordWebhook.EmbedObject().setDescription(message));
-            try {
-                discordWebhook.execute();
-            } catch (Exception exception) {
-                MessageUtil.throwErrorMessage("[Discord Web Hook] Occur an error while trying to connect to discord web hook! (" + exception.getMessage() + ")");
-            }
+            discordWebhook.execute();
         });
     }
 
     public void sendMessage(DiscordWebhook.EmbedObject embedObject) {
-        DiscordWebhook discordWebhook = new DiscordWebhook(webHookURL);
-        if (webHookURL == null || webHookURL.equals(""))
-            return;
-
-        TaiXiu.support.getFoliaLib().getScheduler().runAsync(task -> {
+        submit(() -> {
+            DiscordWebhook discordWebhook = new DiscordWebhook(webHookURL);
             discordWebhook.addEmbed(embedObject);
+            discordWebhook.execute();
+        });
+    }
+
+    public void sendResult(String jsonFile, ISession session) {
+        submit(() -> {
+            DiscordWebhook webhook = new DiscordWebhook(webHookURL);
+            webhook.addEmbed(getResultMessageFromJSON(jsonFile, session));
+            webhook.execute();
+        });
+    }
+
+    public void sendPlayerBet(String jsonFile, ISession session, String playerName, UUID playerId,
+                              TaiXiuResult result, long money) {
+        submit(() -> {
+            DiscordWebhook webhook = new DiscordWebhook(webHookURL);
+            webhook.addEmbed(getPlayerBetMessageFromJSON(jsonFile, session, playerName, playerId, result, money));
+            webhook.execute();
+        });
+    }
+
+    private void submit(ThrowingRunnable task) {
+        if (webHookURL == null || webHookURL.isBlank() || executor.isShutdown()) return;
+        executor.execute(() -> {
             try {
-                discordWebhook.execute();
+                task.run();
             } catch (Exception exception) {
-                MessageUtil.throwErrorMessage("[Discord Web Hook] Occur an error while trying to connect to discord web hook! (" + exception.getMessage() + ")");
+                MessageUtil.throwErrorMessage("Discord webhook failed: " + exception.getMessage());
             }
         });
     }
 
     public DiscordWebhook.EmbedObject getResultMessageFromJSON(String jsonFile, ISession session) throws IOException {
-        String jsonString = new String(Files.readAllBytes(Paths.get(jsonFile)));
+        String jsonString = template(Paths.get(jsonFile));
         JSONObject jsonObject = new JSONObject(jsonString);
         DiscordWebhook.EmbedObject embedObject = new DiscordWebhook.EmbedObject();
 
@@ -105,8 +137,9 @@ public class DiscordSupport {
         return embedObject;
     }
 
-    public DiscordWebhook.EmbedObject getPlayerBetMessageFromJSON(String jsonFile, ISession session, Player player, TaiXiuResult taiXiuResult, long money) throws IOException {
-        String jsonString = new String(Files.readAllBytes(Paths.get(jsonFile)));
+    public DiscordWebhook.EmbedObject getPlayerBetMessageFromJSON(String jsonFile, ISession session, String playerName,
+                                                                  java.util.UUID playerId, TaiXiuResult taiXiuResult, long money) throws IOException {
+        String jsonString = template(Paths.get(jsonFile));
         JSONObject jsonObject = new JSONObject(jsonString);
         DiscordWebhook.EmbedObject embedObject = new DiscordWebhook.EmbedObject();
 
@@ -115,12 +148,12 @@ public class DiscordSupport {
         }
         if (jsonObject.has("author")) {
             JSONObject object = jsonObject.getJSONObject("author");
-            String name = formatPlayerBet(object.getString("name"), jsonObject, session, player, taiXiuResult, money);
+            String name = formatPlayerBet(object.getString("name"), jsonObject, session, playerName, playerId, taiXiuResult, money);
             String icon_url = object.getString("icon_url");
             if (icon_url == null)
                 embedObject.setAuthor(name);
             else
-                embedObject.setAuthor(name, formatPlayerBet(icon_url, jsonObject, session, player, taiXiuResult, money), formatPlayerBet(icon_url, jsonObject, session, player, taiXiuResult, money));
+                embedObject.setAuthor(name, formatPlayerBet(icon_url, jsonObject, session, playerName, playerId, taiXiuResult, money), formatPlayerBet(icon_url, jsonObject, session, playerName, playerId, taiXiuResult, money));
         }
         if (jsonObject.has("color")) {
             JSONObject object = jsonObject.getJSONObject("color");
@@ -135,8 +168,8 @@ public class DiscordSupport {
                 if (field.getString("fieldtype").equalsIgnoreCase("blank")) {
                     embedObject.addBlankField(false);
                 } else {
-                    String name = formatPlayerBet(field.getString("name"), jsonObject, session, player, taiXiuResult, money);
-                    String value = formatPlayerBet(field.getString("value"), jsonObject, session, player, taiXiuResult, money);
+                    String name = formatPlayerBet(field.getString("name"), jsonObject, session, playerName, playerId, taiXiuResult, money);
+                    String value = formatPlayerBet(field.getString("value"), jsonObject, session, playerName, playerId, taiXiuResult, money);
                     embedObject.addField(name, value, field.optBoolean("inline", false));
                 }
             }
@@ -144,7 +177,8 @@ public class DiscordSupport {
         return embedObject;
     }
 
-    private String formatPlayerBet(String string, JSONObject jsonObject, ISession session, Player player, TaiXiuResult taiXiuResult, long money) {
+    private String formatPlayerBet(String string, JSONObject jsonObject, ISession session, String playerName,
+                                   java.util.UUID playerId, TaiXiuResult taiXiuResult, long money) {
         String resultFormatted = "N/A";
         if (taiXiuResult == TaiXiuResult.TAI)
             resultFormatted = jsonObject.getJSONObject("placeholders").getString("tai");
@@ -153,8 +187,8 @@ public class DiscordSupport {
         String pattern = jsonObject.getJSONObject("placeholders").getString("date");
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
 
-        string = string.replace("%playerName%", player.getName())
-                .replace("%playerUUID%", player.getUniqueId().toString())
+        string = string.replace("%playerName%", playerName)
+                .replace("%playerUUID%", playerId.toString())
                 .replace("%currencyName%", TaiXiu.nms.stripColor(MessageUtil.getCurrencyName(session.getCurrencyType())))
                 .replace("%money%", MessageUtil.getFormatMoneyDisplay(money))
                 .replace("%bet%", resultFormatted)
@@ -181,7 +215,8 @@ public class DiscordSupport {
                 bestWinnersFormatted = jsonObject.getJSONObject("placeholders").getJSONObject("bestWinners").getString("valid-special");
                 bestWinnersFormatted = bestWinnersFormatted.replace("%allBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTotalBet(session)));
             } else {
-                Map<String, Long> bestWinners = result == TaiXiuResult.XIU ? session.getXiuPlayers() : session.getTaiPlayers();
+                Map<String, Long> bestWinners = result == TaiXiuResult.XIU
+                        ? session.getXiuPlayerSnapshot() : session.getTaiPlayerSnapshot();
                 if (bestWinners.isEmpty()) {
                     bestWinnersFormatted = invalid;
                 } else {
@@ -214,4 +249,30 @@ public class DiscordSupport {
                 .replace("%bestWinners%", bestWinnersFormatted);
         return string;
     }
+
+    private String template(Path path) throws IOException {
+        Path normalized = path.toAbsolutePath().normalize();
+        long modified = Files.getLastModifiedTime(normalized).toMillis();
+        CachedTemplate cached = templates.get(normalized);
+        if (cached != null && cached.modifiedAt() == modified) return cached.json();
+        String json = Files.readString(normalized, StandardCharsets.UTF_8);
+        templates.put(normalized, new CachedTemplate(modified, json));
+        return json;
+    }
+
+    @Override
+    public void close() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(3, TimeUnit.SECONDS)) executor.shutdownNow();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            executor.shutdownNow();
+        }
+        templates.clear();
+    }
+
+    private record CachedTemplate(long modifiedAt, String json) { }
+    @FunctionalInterface
+    private interface ThrowingRunnable { void run() throws Exception; }
 }

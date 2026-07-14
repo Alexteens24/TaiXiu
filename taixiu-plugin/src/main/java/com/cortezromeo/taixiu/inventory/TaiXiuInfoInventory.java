@@ -8,7 +8,7 @@ import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.ItemUtil;
 import com.cortezromeo.taixiu.util.MessageUtil;
-import com.tcoded.folialib.wrapper.task.WrappedTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -26,7 +26,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
     private HashMap<String, Long> taiPlayers = new HashMap<>();
     private SortItemsType sortItemsType;
     private ISession sessionData;
-    private WrappedTask wrappedTask;
+    private ScheduledTask wrappedTask;
 
     public TaiXiuInfoInventory(Player owner, ISession sessionData) {
         super(owner);
@@ -47,7 +47,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
             if (getSessionData().getResult() != TaiXiuResult.NONE)
                 return;
 
-            TaiXiu.support.getFoliaLib().getScheduler().runTimerAsync(task -> {
+            wrappedTask = TaiXiu.scheduler.runEntityTimer(getOwner(), task -> {
                 wrappedTask = task;
                 if (getInventory().getViewers().isEmpty() || !getOwner().getOpenInventory().getTopInventory().equals(getInventory())) {
                     task.cancel();
@@ -84,6 +84,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
         ItemStack itemStack = event.getCurrentItem();
         String itemeCustomData = TaiXiu.nms.getCustomData(itemStack);
 
+        if (itemeCustomData == null) return;
         if (itemeCustomData.equals("prevPage")) {
             if (page != 0){
                 page = page - 1;
@@ -118,7 +119,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
 
     @Override
     public void setMenuItems() {
-        TaiXiu.support.getFoliaLib().getScheduler().runAsync(task -> {
+        TaiXiu.scheduler.runEntity(getOwner(), () -> {
             addPaginatedMenuItems();
             FileConfiguration invFileConfig = TaiXiuInfoInventoryFile.get();
 
@@ -156,7 +157,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
             this.taiPlayers.clear();
 
             //
-            HashMap<String, Long> xiuPlayersFromSession = getSessionData().getXiuPlayers();
+            Map<String, Long> xiuPlayersFromSession = getSessionData().getXiuPlayerSnapshot();
             if (!xiuPlayersFromSession.isEmpty()) {
                 for (String xiuPlayer : xiuPlayersFromSession.keySet()) {
                     if (sortItemsType != SortItemsType.taiPlayers) {
@@ -165,7 +166,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
                     }
                 }
             }
-            HashMap<String, Long> taiPlayersFromSession = getSessionData().getTaiPlayers();
+            Map<String, Long> taiPlayersFromSession = getSessionData().getTaiPlayerSnapshot();
             if (!taiPlayersFromSession.isEmpty()) {
                 for (String taiPlayer : taiPlayersFromSession.keySet()) {
                     if (sortItemsType != SortItemsType.xiuPlayers) {
@@ -259,8 +260,8 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
         List<String> itemLore = itemMeta.getLore();
         itemLore.replaceAll(string -> TaiXiu.nms.addColor(string.replace("%time%", (sessionData.getResult() != TaiXiuResult.NONE ? "0" : String.valueOf(TaiXiuManager.getTimeLeft())))
                 .replace("%session%", String.valueOf(sessionData.getSession()))
-                .replace("%xiuPlayerNumber%", String.valueOf(sessionData.getXiuPlayers().size()))
-                .replace("%taiPlayerNumber%", String.valueOf(sessionData.getTaiPlayers().size()))
+                .replace("%xiuPlayerNumber%", String.valueOf(sessionData.getXiuPlayerSnapshot().size()))
+                .replace("%taiPlayerNumber%", String.valueOf(sessionData.getTaiPlayerSnapshot().size()))
                 .replace("%xiuTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getXiuBet(sessionData)))
                 .replace("%taiTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTaiBet(sessionData)))
                 .replace("%totalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTotalBet(sessionData)))

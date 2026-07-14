@@ -20,11 +20,13 @@ import static com.cortezromeo.taixiu.util.MessageUtil.sendMessage;
 
 public class MenuGeyserForm {
 
-    private static final FileConfiguration geyserFormFile = GeyserFormFile.get();
+    private static FileConfiguration geyserFormFile;
     private static String title;
     private static HashMap<Integer, ButtonData> buttonData = new HashMap<>();
 
     public static void setupValue() {
+        geyserFormFile = GeyserFormFile.get();
+        buttonData.clear();
         String stringPath = "form.menu.";
         title = geyserFormFile.getString(stringPath + "title");
         buttonData.put(1, new ButtonData(geyserFormFile.getString(stringPath + "button.rule.name")

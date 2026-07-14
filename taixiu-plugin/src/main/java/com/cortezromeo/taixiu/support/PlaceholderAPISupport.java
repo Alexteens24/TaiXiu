@@ -42,9 +42,9 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
             return String.valueOf(session.getResult());
         }
@@ -54,9 +54,9 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
             return MessageUtil.getFormatResultName(session.getResult());
         }
@@ -66,11 +66,11 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
-            return String.valueOf(session.getTaiPlayers());
+            return String.valueOf(session.getTaiPlayerSnapshot());
         }
 
         if (s.startsWith("xiuplayers_phien_")) {
@@ -78,11 +78,11 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
-            return String.valueOf(session.getXiuPlayers());
+            return String.valueOf(session.getXiuPlayerSnapshot());
         }
 
         if (s.startsWith("taiplayers_bet_phien_")) {
@@ -90,17 +90,12 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
 
-            long sum = 0L;
-            if (session.getTaiPlayers() != null) {
-                for (long value : session.getTaiPlayers().values()) {
-                    sum += value;
-                }
-            }
+            long sum = session.getTaiPlayerSnapshot().values().stream().mapToLong(Long::longValue).sum();
 
             return String.valueOf(sum);
         }
@@ -110,17 +105,12 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
 
-            long sum = 0L;
-            if (session.getXiuPlayers() != null) {
-                for (long value : session.getXiuPlayers().values()) {
-                    sum += value;
-                }
-            }
+            long sum = session.getXiuPlayerSnapshot().values().stream().mapToLong(Long::longValue).sum();
 
             return String.valueOf(sum);
         }
@@ -130,12 +120,33 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (sessionNumber.equals("current") || sessionNumber.equals("hientai"))
                 sessionNumber = String.valueOf(TaiXiuManager.getSessionData().getSession());
 
-            ISession session = DatabaseManager.taiXiuData.get(Long.valueOf(sessionNumber));
+            ISession session = resolveSession(sessionNumber);
             if (session == null) {
-                return "";
+                return loadingValue();
             }
             return String.valueOf(TaiXiuManager.getTotalBet(session));
         }
         return null;
+    }
+
+    private ISession resolveSession(String sessionNumber) {
+        try {
+            long id = Long.parseLong(sessionNumber);
+            if (id < 0) return null;
+            ISession cached = DatabaseManager.getSessionData(id);
+            if (cached != null) return cached;
+            DatabaseManager.loadSessionDataAsync(id).exceptionally(error -> {
+                TaiXiu.plugin.getLogger().warning("Could not asynchronously load placeholder session #" + id
+                        + ": " + error.getMessage());
+                return null;
+            });
+        } catch (NumberFormatException ignored) {
+            // Invalid user-supplied placeholder suffixes resolve to an empty value.
+        }
+        return null;
+    }
+
+    private String loadingValue() {
+        return TaiXiu.plugin.getConfig().getString("placeholder-history-loading-value", "...");
     }
 }

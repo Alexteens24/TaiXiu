@@ -4,6 +4,8 @@ import javax.net.ssl.HttpsURLConnection;
 import java.awt.*;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Array;
 import java.net.URL;
 import java.util.*;
@@ -136,20 +138,46 @@ public class DiscordWebhook {
             json.put("embeds", embedObjects.toArray());
         }
 
-        URL url = new URL(this.url);
-        HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
-        connection.addRequestProperty("Content-Type", "application/json");
-        connection.addRequestProperty("User-Agent", "Java-DiscordWebhook-BY-Gelox_");
-        connection.setDoOutput(true);
-        connection.setRequestMethod("POST");
+        byte[] payload = json.toString().getBytes(StandardCharsets.UTF_8);
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            HttpsURLConnection connection = (HttpsURLConnection) new URL(this.url).openConnection();
+            connection.addRequestProperty("Content-Type", "application/json");
+            connection.addRequestProperty("User-Agent", "TaiXiu/3 DiscordWebhook");
+            connection.setDoOutput(true);
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            try {
+                try (OutputStream stream = connection.getOutputStream()) {
+                    stream.write(payload);
+                }
+                int status = connection.getResponseCode();
+                InputStream response = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                if (response != null) try (response) { response.transferTo(OutputStream.nullOutputStream()); }
+                if (status >= 200 && status < 300) return;
+                if (status != 429 || attempt == 3)
+                    throw new IOException("Discord returned HTTP " + status);
+                sleepRetryAfter(connection.getHeaderField("Retry-After"), attempt);
+            } finally {
+                connection.disconnect();
+            }
+        }
+    }
 
-        OutputStream stream = connection.getOutputStream();
-        stream.write(json.toString().getBytes());
-        stream.flush();
-        stream.close();
-
-        connection.getInputStream().close(); //I'm not sure why but it doesn't work without getting the InputStream
-        connection.disconnect();
+    private static void sleepRetryAfter(String header, int attempt) throws IOException {
+        long delay = 500L * attempt;
+        if (header != null) {
+            try {
+                double value = Double.parseDouble(header.trim());
+                delay = value > 50 ? (long) value : (long) (value * 1000);
+            } catch (NumberFormatException ignored) { }
+        }
+        try {
+            Thread.sleep(Math.min(5000, Math.max(100, delay)));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for Discord rate limit", exception);
+        }
     }
 
     public static class EmbedObject {

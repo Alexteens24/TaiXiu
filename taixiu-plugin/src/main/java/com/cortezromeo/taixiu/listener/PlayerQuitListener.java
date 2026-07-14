@@ -2,6 +2,7 @@ package com.cortezromeo.taixiu.listener;
 
 import com.cortezromeo.taixiu.TaiXiu;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
+import com.cortezromeo.taixiu.manager.BossBarManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -23,6 +24,7 @@ public class PlayerQuitListener implements Listener {
         if (DatabaseManager.togglePlayers.contains(p.getName())) {
             DatabaseManager.togglePlayers.remove(p.getName());
         }
+        BossBarManager.remove(p);
 
     }
 }

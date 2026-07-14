@@ -7,13 +7,14 @@ import com.cortezromeo.taixiu.api.TaiXiuState;
 import com.cortezromeo.taixiu.file.GeyserFormFile;
 import com.cortezromeo.taixiu.file.inventory.TaiXiuInfoInventoryFile;
 import com.cortezromeo.taixiu.language.Messages;
-import com.cortezromeo.taixiu.manager.AutoSaveManager;
 import com.cortezromeo.taixiu.manager.BossBarManager;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
+import com.cortezromeo.taixiu.storage.SessionDataStorage;
+import com.cortezromeo.taixiu.economy.VaultCurrencyGateway;
+import com.cortezromeo.taixiu.economy.PlayerPointsCurrencyGateway;
 import com.cortezromeo.taixiu.util.MessageUtil;
 import org.bukkit.Bukkit;
-import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -24,6 +25,7 @@ import org.bukkit.util.StringUtil;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import static com.cortezromeo.taixiu.manager.DebugManager.setDebug;
 import static com.cortezromeo.taixiu.util.MessageUtil.sendBroadCast;
@@ -45,12 +47,26 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
             }
         }
 
+        if (!Bukkit.isGlobalTickThread()) {
+            TaiXiu.scheduler.runGlobal(() -> executeCommand(sender, args));
+            return true;
+        }
+        return executeCommand(sender, args);
+    }
+
+    private boolean executeCommand(CommandSender sender, String[] args) {
+
         if (args.length == 1) {
-            switch (args[0]) {
+            switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "changestate":
                     if (TaiXiuManager.getState() == TaiXiuState.PLAYING) {
                         TaiXiuManager.setState(TaiXiuState.PAUSING);
                     } else {
+                        if (!TaiXiuManager.isHealthy()) {
+                            sendMessage(sender, "&cCannot resume while health-lock is active: "
+                                    + TaiXiuManager.healthSummary());
+                            return true;
+                        }
                         TaiXiuManager.setState(TaiXiuState.PLAYING);
                     }
                     sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_CHANGESTATE.replace("%state%", TaiXiuManager.getState().toString()));
@@ -58,32 +74,43 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                             .replace("%playerName%", sender.getName())
                             .replace("%state%", TaiXiuManager.getState().toString()));
                     return false;
+                case "health":
+                    sendMessage(sender, TaiXiuManager.isHealthy()
+                            ? "&aTaiXiu health: HEALTHY"
+                            : "&cTaiXiu health-lock: " + TaiXiuManager.healthSummary());
+                    return true;
                 case "reload":
                     TaiXiu.plugin.reloadConfig();
+                    if (!TaiXiu.plugin.validateConfig()) {
+                        TaiXiuManager.markUnhealthy("INVALID_CONFIGURATION");
+                        sendMessage(sender, "&cInvalid config. TaiXiu has been paused; check the console.");
+                        return true;
+                    }
                     Messages.setupValue(TaiXiu.plugin.getConfig().getString("locale"));
                     GeyserFormFile.reload();
-                    DatabaseManager.loadLoadingType();
                     if (!TaiXiu.plugin.getConfig().getBoolean("boss-bar.enabled")) {
                         for (Player p : Bukkit.getOnlinePlayers()) {
-                            if (BossBarManager.bossBarPlayers.containsKey(p)) {
-                                BossBar bossBar = BossBarManager.bossBarPlayers.get(p);
-                                if (bossBar != null)
-                                    bossBar.removeAll();
-                            }
+                            BossBarManager.remove(p);
                         }
                     } else
                         BossBarManager.setupValue();
                     TaiXiuInfoInventoryFile.reload();
-                    if (TaiXiu.support.isFloodgateSupported())
-                        TaiXiu.support.setupGeyserForm();
+                    TaiXiu.support.reloadConfigurableSupports();
+                    if (TaiXiu.support.getVault() != null)
+                        TaiXiu.currencies.register(CurrencyTyppe.VAULT,
+                                new VaultCurrencyGateway(TaiXiu.support.getVault()));
+                    else
+                        TaiXiuManager.markUnhealthy("VAULT_PROVIDER_UNAVAILABLE");
+                    if (TaiXiu.support.getPlayerPointsAPI() != null)
+                        TaiXiu.currencies.register(CurrencyTyppe.PLAYERPOINTS,
+                                new PlayerPointsCurrencyGateway(TaiXiu.support.getPlayerPointsAPI()));
+                    else
+                        TaiXiu.currencies.unregister(CurrencyTyppe.PLAYERPOINTS);
                     setDebug(TaiXiu.plugin.getConfig().getBoolean("debug"));
-                    if (AutoSaveManager.getAutoSaveStatus() && !TaiXiu.plugin.getConfig().getBoolean("database.auto-save.enable")) {
-                        AutoSaveManager.stopAutoSave();
-                    } else {
-                        AutoSaveManager.startAutoSave(TaiXiu.plugin.getConfig().getInt("database.auto-save.time"));
-                    }
-                    AutoSaveManager.reloadTimeAutoSave();
-
+                    SessionDataStorage.reloadRetentionAsync().exceptionally(error -> {
+                        TaiXiu.plugin.getLogger().severe("Could not reload database retention: " + error.getMessage());
+                        return null;
+                    });
                     sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_RELOAD);
                     return false;
                 default:
@@ -93,7 +120,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
         }
 
         if (args.length == 2) {
-            switch (args[0]) {
+            switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "settime":
                     try {
                         int time = Integer.parseInt(args[1]);
@@ -114,7 +141,13 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     return false;
                 case "setcurrency":
                     try {
-                        CurrencyTyppe currencyTyppe = CurrencyTyppe.valueOf(args[1]);
+                        CurrencyTyppe currencyTyppe = CurrencyTyppe.valueOf(args[1].toUpperCase(Locale.ROOT));
+                        if (TaiXiuManager.hasPendingBets()
+                                || !TaiXiuManager.getSessionData().getTaiPlayerSnapshot().isEmpty()
+                                || !TaiXiuManager.getSessionData().getXiuPlayerSnapshot().isEmpty()) {
+                            sendMessage(sender, "&cCurrency cannot be changed after betting has started.");
+                            return true;
+                        }
                         if (currencyTyppe == CurrencyTyppe.PLAYERPOINTS)
                             if (TaiXiu.support.getPlayerPointsAPI() == null) {
                                 sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_UNSUPPORTED_CURRENCY.replace("%currency%", currencyTyppe.toString()));
@@ -132,14 +165,60 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                         sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_SETCURRENCY_INVALID);
                     }
                     return false;
+                case "transaction":
+                    if (!args[1].equalsIgnoreCase("list")) {
+                        sendMessage(sender, "&cUsage: /taixiuadmin transaction list");
+                        return true;
+                    }
+                    listTransactions(sender, 1, null);
+                    return true;
+                case "health":
+                    if (!args[1].equalsIgnoreCase("acknowledge")) {
+                        sendMessage(sender, "&cUsage: /taixiuadmin health acknowledge");
+                        return true;
+                    }
+                    TaiXiuManager.acknowledgeHealth(sender.getName());
+                    sendMessage(sender, "&eHealth-lock cleared. Use changestate to resume after verifying providers/database.");
+                    return true;
                 default:
                     sendMessage(sender, Messages.WRONG_ARGUMENT);
                     return false;
             }
         }
 
+        if (args.length >= 3 && args[0].equalsIgnoreCase("transaction")
+                && args[1].equalsIgnoreCase("list")) {
+            try {
+                int page = Math.max(1, Integer.parseInt(args[2]));
+                String status = args.length > 3 ? args[3].toUpperCase(Locale.ROOT) : null;
+                listTransactions(sender, page, status);
+            } catch (NumberFormatException exception) {
+                sendMessage(sender, "&cUsage: /taixiuadmin transaction list [page] [status]");
+            }
+            return true;
+        }
+
+        if (args.length >= 4 && args[0].equalsIgnoreCase("transaction")) {
+            if (!args[3].equalsIgnoreCase("confirm")) {
+                sendMessage(sender, "&cReconciliation changes money/state. Append 'confirm' to execute it.");
+                return true;
+            }
+            String reason = args.length > 4
+                    ? String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length))
+                    : "Manual reconciliation via command";
+            TaiXiuManager.reconcileTransaction(args[1], args[2], sender.getName(), reason)
+                    .whenComplete((result, error) -> TaiXiu.scheduler.runGlobal(() -> sendMessage(sender,
+                            error == null ? "&e" + result : "&c" + error.getMessage())));
+            return true;
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("transaction")) {
+            sendMessage(sender, "&cUsage: /taixiuadmin transaction <id> <action> confirm [reason]");
+            return true;
+        }
+
         if (args.length == 4) {
-            switch (args[0]) {
+            switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "setresult":
                     if (TaiXiuManager.getSessionData().getResult() != TaiXiuResult.NONE) {
                         sendMessage(sender, "%prefix%&ePlease wait a few seconds before you can use this command again!");
@@ -155,17 +234,23 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                             return false;
                         }
 
-                        TaiXiuManager.resultSeason(TaiXiuManager.getSessionData(), dice1, dice2, dice3);
-
-                        sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_SETRESULT
-                                .replace("%dice1%", String.valueOf(dice1))
-                                .replace("%dice2%", String.valueOf(dice2))
-                                .replace("%dice3%", String.valueOf(dice3)));
-                        sendBroadCast(Messages.COMMAND_TAIXIUADMIN_SETRESULT_BROADCAST
-                                .replace("%playerName%", sender.getName())
-                                .replace("%dice1%", String.valueOf(dice1))
-                                .replace("%dice2%", String.valueOf(dice2))
-                                .replace("%dice3%", String.valueOf(dice3)));
+                        var session = TaiXiuManager.getSessionData();
+                        TaiXiuManager.resultSeasonAsync(session, dice1, dice2, dice3).whenComplete((settled, error) ->
+                                TaiXiu.scheduler.runGlobal(() -> {
+                                    if (error != null || !Boolean.TRUE.equals(settled)) {
+                                        sendMessage(sender, "&cCould not settle the session; TaiXiu has been paused. Check the console.");
+                                        return;
+                                    }
+                                    sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_SETRESULT
+                                            .replace("%dice1%", String.valueOf(session.getDice1()))
+                                            .replace("%dice2%", String.valueOf(session.getDice2()))
+                                            .replace("%dice3%", String.valueOf(session.getDice3())));
+                                    sendBroadCast(Messages.COMMAND_TAIXIUADMIN_SETRESULT_BROADCAST
+                                            .replace("%playerName%", sender.getName())
+                                            .replace("%dice1%", String.valueOf(session.getDice1()))
+                                            .replace("%dice2%", String.valueOf(session.getDice2()))
+                                            .replace("%dice3%", String.valueOf(session.getDice3())));
+                                }));
                     } catch (Exception e) {
                         sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_INVALID_DICE_INPUT);
                     }
@@ -184,7 +269,30 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
     }
 
     public void sendMessage(CommandSender sender, String message) {
-        sender.sendMessage(TaiXiu.nms.addColor(message.replace("%prefix%", Messages.COMMAND_TAIXIUADMIN_PREFIX)));
+        String formatted = TaiXiu.nms.addColor(message.replace("%prefix%", Messages.COMMAND_TAIXIUADMIN_PREFIX));
+        if (sender instanceof Player player && !Bukkit.isOwnedByCurrentRegion(player)) {
+            TaiXiu.scheduler.runEntity(player, () -> player.sendMessage(formatted));
+            return;
+        }
+        sender.sendMessage(formatted);
+    }
+
+    private void listTransactions(CommandSender sender, int page, String status) {
+        SessionDataStorage.unresolvedJournalAsync().whenComplete((entries, error) -> TaiXiu.scheduler.runGlobal(() -> {
+            if (error != null) {
+                sendMessage(sender, "&cCould not load transactions: " + error.getMessage());
+                return;
+            }
+            var filtered = entries.stream()
+                    .filter(entry -> status == null || entry.status().equalsIgnoreCase(status)).toList();
+            int pageSize = 20;
+            int pages = Math.max(1, (filtered.size() + pageSize - 1) / pageSize);
+            int safePage = Math.min(page, pages);
+            sendMessage(sender, "&eUnresolved transactions: " + filtered.size() + " (page " + safePage + "/" + pages + ")");
+            filtered.stream().skip((long) (safePage - 1) * pageSize).limit(pageSize).forEach(entry -> sendMessage(sender,
+                    "&7" + entry.id() + " &f" + entry.kind() + " &e" + entry.status()
+                            + " &7" + entry.playerName() + " " + entry.amount()));
+        }));
     }
 
     @Override
@@ -199,6 +307,8 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                 commands.add("settime");
                 commands.add("setcurrency");
                 commands.add("setresult");
+                commands.add("transaction");
+                commands.add("health");
             }
             StringUtil.copyPartialMatches(args[0], commands, completions);
         }
@@ -208,8 +318,18 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     commands.add("VAULT");
                     commands.add("PLAYERPOINTS");
                 }
+                if (args[0].equalsIgnoreCase("transaction")) commands.add("list");
+                if (args[0].equalsIgnoreCase("health")) commands.add("acknowledge");
                 StringUtil.copyPartialMatches(args[1], commands, completions);
             }
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("transaction")) {
+            commands.addAll(List.of("complete", "fail", "refund", "retry"));
+            StringUtil.copyPartialMatches(args[2], commands, completions);
+        }
+        if (args.length == 4 && args[0].equalsIgnoreCase("transaction")) {
+            commands.add("confirm");
+            StringUtil.copyPartialMatches(args[3], commands, completions);
         }
         Collections.sort(completions);
         return completions;

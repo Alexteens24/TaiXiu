@@ -19,20 +19,49 @@ The player's task is to predict whether the result is Tai or Xiu. Xiu is the sum
 - Supporting BossBar
 - Supporting Floodgate (GeyserMC)
 - Easily managing plugin database
+- Crash-aware economy transaction journal and SQLite session storage
 
 ## System requirements
-This software runs on [Spigot](https://www.spigotmc.org/) and NMS.
-Spigot forks without compiled NMS code are not supported.
-Officially supported servers are [spigot](https://www.spigotmc.org/) and [paper](https://papermc.io/).
-It is required to use [**Java 11**](https://www.oracle.com/java/technologies/javase/jdk11-archive-downloads.html) or newer.
+TaiXiu 3.0 requires **Java 21** and **Paper or Folia 1.21.4+**. The plugin now uses the public Paper API and has no version-specific NMS dependency.
+
+Build from source with the bundled Gradle Wrapper: `./gradlew clean build`. The distributable plugin is written to `taixiu-plugin/build/libs/TaiXiu-3.0.0.jar`.
+
+Dependencies and GitHub Actions are monitored weekly by Dependabot via `.github/dependabot.yml`. Use the wrapper instead of a system Gradle installation so builds use the pinned, verified Gradle version.
 
 ## Plugin requirements
 - [Vault](https://www.spigotmc.org/resources/vault.34315/)
-- [VaultUnlocked](https://www.spigotmc.org/resources/vaultunlocked.117277/) (For Folia)
+- [VaultUnlocked](https://www.spigotmc.org/resources/vaultunlocked.117277/) when running Folia
 - One economy plugin
 -- Economy plugins: [iConomy](http://dev.bukkit.org/server-mods/iconomy) 4,5,6, [BOSEconomy](http://dev.bukkit.org/server-mods/boseconomy) 6 & 7, EssentialsEcon, 3Co, [MultiCurrency](http://dev.bukkit.org/server-mods/multicurrency), [MineConomy](http://dev.bukkit.org/server-mods/mineconomy), [eWallet](http://dev.bukkit.org/server-mods/ewallet), [EconXP](http://dev.bukkit.org/server-mods/econxp/), [CurrencyCore](http://dev.bukkit.org/server-mods/currency/), [CraftConomy](http://dev.bukkit.org/server-mods/craftconomy/), AEco, [Gringotts](http://dev.bukkit.org/server-mods/gringotts/), [BetterEconomy](https://www.spigotmc.org/resources/bettereconomy.96690/)
 > [!CAUTION]
-> If your server software is folia, using vault will cause error. I would recommend to use VaultUnlocked to replace Vault and use BetterEconomy to replace any economy plugin.
+> On Folia, the selected Vault implementation and economy provider must also support Folia.
+
+## Storage and migration
+
+Sessions, bets, payouts and the economy transaction journal are stored in one SQLite file, `plugins/TaiXiu/taixiu.db`. SQLite WAL mode is enabled and important economy transitions are committed immediately.
+
+On the first 3.0 startup, if the database is empty, TaiXiu imports only the latest unfinished session from the old `session/*.yml` storage. Completed YAML history is intentionally not imported. The old folder is moved to a timestamped `session-legacy-*` archive so it can be inspected or backed up manually.
+
+History retention is configured at `database.retention`: `ALL` keeps every completed session, `DAYS` keeps a time window, and `COUNT` keeps the newest configured number of completed sessions. Sessions with pending payouts are never removed.
+
+Changing `database.file` requires a server restart. Other validated settings, including retention, Discord webhook and Geyser forms, are refreshed by `/taixiuadmin reload`.
+
+### Transaction recovery
+
+TaiXiu records an economy intent before changing a balance. Known provider rejections are marked failed; known applied changes are completed or compensated. If the server or economy provider stops at the exact point where TaiXiu cannot know whether money changed, the entry is marked `UNKNOWN` and is never credited automatically. This avoids silently duplicating money on providers that do not expose idempotency keys.
+
+Inspect and reconcile these entries explicitly:
+
+- `/taixiuadmin health` and `/taixiuadmin health acknowledge`
+- `/taixiuadmin transaction list [page] [status]`
+- `/taixiuadmin transaction <id> complete confirm [reason]` — assert that the intended balance change already happened.
+- `/taixiuadmin transaction <id> fail confirm [reason]` — record a known provider rejection.
+- `/taixiuadmin transaction <id> refund confirm [reason]` — credit an ambiguous/applied debit after checking the provider ledger.
+- `/taixiuadmin transaction <id> retry confirm [reason]` — retry a payout after checking that it was not already credited.
+
+The game stays health-locked and paused while unresolved transactions exist. `health acknowledge` is an explicit operator override; verify the database and provider ledger before clearing it.
+
+For a live backup, use SQLite's backup API/command instead of copying only `taixiu.db`; otherwise stop the server first and copy the database after shutdown.
 
 ## Soft-depend plugins
 You might need these plugins to utilize my plugin resources totally.
@@ -69,9 +98,25 @@ You might need these plugins to utilize my plugin resources totally.
     - settime
     - setcurrency
     - setresult
+    - health `[acknowledge]`
+    - transaction list `[page] [status]`
+    - transaction `<id>` `<complete|fail|refund|retry>` confirm `[reason]`
 - `taixiu.tax.bypass`: Bypass taxes.
 
 ## Update history
+<details>
+<summary>3.0.0</summary>
+
+	- Requires Java 21 and Paper/Folia 1.21.4+.
+	- Replaced YAML session files with SQLite, WAL, schema migrations and configurable retention.
+	- Added active-session YAML migration and crash recovery journal for debits and payouts.
+	- Added conservative UNKNOWN transaction handling and explicit admin reconciliation commands.
+	- Reworked economy providers to validate Vault and PlayerPoints transaction results.
+	- Replaced FoliaLib with native Paper global, async and entity schedulers.
+	- Added immutable API snapshots, a correctly spelled CurrencyType API and cancellable PlayerBetPreEvent.
+	- Fixed shared tax mutation, offline PlayerPoints payouts, task startup races, settlement races and recursive result retries.
+	- Replaced Maven with Gradle Kotlin DSL and added weekly Dependabot updates.
+</details>
 <details>
 <summary>2.8</summary>
 
@@ -170,10 +215,8 @@ You might need these plugins to utilize my plugin resources totally.
 ## 3rd party libraries
 - [JetBrains Java Annotations](https://mvnrepository.com/artifact/org.jetbrains/annotations)
 - [ConfigUpdater](https://github.com/tchristofferson/Config-Updater)
-- [XSeries](https://github.com/CryptoMorin/XSeries)
-- [GSon](https://github.com/google/gson)
-- [NBTEditor](https://github.com/BananaPuncher714/NBTEditor)
-- [FoliaLib](https://github.com/TechnicallyCoded/FoliaLib)
+- [SQLite JDBC](https://github.com/xerial/sqlite-jdbc)
+- [JSON-java](https://github.com/stleary/JSON-java)
 
 # Special Thanks To
 [<img src="https://user-images.githubusercontent.com/21148213/121807008-8ffc6700-cc52-11eb-96a7-2f6f260f8fda.png" alt="" width="150">](https://www.jetbrains.com)

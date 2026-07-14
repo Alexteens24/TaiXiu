@@ -1,8 +1,8 @@
 name: TaiXiu
 author: Cortez_Romeo
-version: '${project.version}'
+version: '@version@'
 main: com.cortezromeo.taixiu.TaiXiu
-api-version: 1.13
+api-version: '1.21.4'
 softdepend:
   - PlaceholderAPI
   - PlayerPoints
@@ -19,3 +19,13 @@ commands:
     description: TaiXiu admin commands
     aliases:
       - taixiuad
+permissions:
+  taixiu.use:
+    description: Use TaiXiu player commands
+    default: true
+  taixiu.admin:
+    description: Manage TaiXiu
+    default: op
+  taixiu.tax.bypass:
+    description: Receive winnings without tax
+    default: op
