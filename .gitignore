@@ -19,6 +19,7 @@ out/
 
 # Package Files #
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -96,6 +97,8 @@ $RECYCLE.BIN/
 *.lnk
 
 target/
+build/
+.gradle/
 
 pom.xml.tag
 pom.xml.releaseBackup
@@ -106,7 +109,6 @@ release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
 .flattened-pom.xml
 
 # Common working directory

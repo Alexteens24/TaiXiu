@@ -20,7 +20,7 @@ public class GeyserFormFile {
             try {
                 file.createNewFile();
             } catch (IOException e) {
-                e.printStackTrace();
+                throw new IllegalStateException("Could not create " + file, e);
             }
         }
         inventoryFile = YamlConfiguration.loadConfiguration(file);
@@ -40,7 +40,7 @@ public class GeyserFormFile {
             inventoryFile.save(file);
 
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new IllegalStateException("Could not save " + file, e);
         }
     }
 

@@ -14,7 +14,7 @@ import static com.cortezromeo.taixiu.util.MessageUtil.sendMessage;
 
 public class BetGeyserForm {
 
-    private static final FileConfiguration geyserFormFile = GeyserFormFile.get();
+    private static FileConfiguration geyserFormFile;
     private static String title;
     private static String secondOrder;
     private static String secondOrderOption1;
@@ -23,6 +23,7 @@ public class BetGeyserForm {
     private static String thirdOrderPlaceholder;
 
     public static void setupValue() {
+        geyserFormFile = GeyserFormFile.get();
         String stringPath = "form.bet.";
         title = geyserFormFile.getString(stringPath + "title");
 

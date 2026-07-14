@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SessionFileStorage implements SessionStorage  {
 
@@ -42,14 +43,19 @@ public class SessionFileStorage implements SessionStorage  {
         data.setDice3(storage.getInt("data.dice3"));
         if (storage.getString("data.currency") != null)
             data.setCurrencyType(CurrencyTyppe.valueOf(storage.getString("data.currency").toUpperCase()));
-        data.setCurrencyType(CurrencyTyppe.VAULT);
         data.setResult(TaiXiuResult.valueOf(storage.getString("data.result")));
         if (storage.get("data.taiPlayers") != null)
             for (String player : storage.getConfigurationSection("data.taiPlayers").getKeys(false))
+            {
+                data.registerPlayer(player, org.bukkit.Bukkit.getOfflinePlayer(player).getUniqueId(), false);
                 data.addTaiPlayer(player, storage.getLong("data.taiPlayers." + player));
+            }
         if (storage.get("data.xiuPlayers") != null)
             for (String player : storage.getConfigurationSection("data.xiuPlayers").getKeys(false))
+            {
+                data.registerPlayer(player, org.bukkit.Bukkit.getOfflinePlayer(player).getUniqueId(), false);
                 data.addXiuPlayer(player, storage.getLong("data.xiuPlayers." + player));
+            }
 
         return data;
     }
@@ -66,15 +72,17 @@ public class SessionFileStorage implements SessionStorage  {
         if (data.getCurrencyType() == null)
             data.setCurrencyType(CurrencyTyppe.VAULT);
         storage.set("data.currency", data.getCurrencyType().toString());
-        if (data.getTaiPlayers() != null) {
-            List<String> listTaiPlayersKey = new ArrayList<String>(data.getTaiPlayers().keySet());
+        Map<String, Long> taiPlayers = data.getTaiPlayerSnapshot();
+        if (!taiPlayers.isEmpty()) {
+            List<String> listTaiPlayersKey = new ArrayList<>(taiPlayers.keySet());
             for (String key : listTaiPlayersKey)
-                storage.set("data.taiPlayers." + key, data.getTaiPlayers().get(key));
+                storage.set("data.taiPlayers." + key, taiPlayers.get(key));
         }
-        if (data.getXiuPlayers() != null) {
-            List<String> listXiuPlayersKey = new ArrayList<String>(data.getXiuPlayers().keySet());
+        Map<String, Long> xiuPlayers = data.getXiuPlayerSnapshot();
+        if (!xiuPlayers.isEmpty()) {
+            List<String> listXiuPlayersKey = new ArrayList<>(xiuPlayers.keySet());
             for (String key : listXiuPlayersKey)
-                storage.set("data.xiuPlayers." + key, data.getXiuPlayers().get(key));
+                storage.set("data.xiuPlayers." + key, xiuPlayers.get(key));
         }
 
         try {

@@ -8,13 +8,14 @@ import org.geysermc.cumulus.form.ModalForm;
 
 public class RuleGeyserForm {
 
-    private static final FileConfiguration geyserFormFile = GeyserFormFile.get();
+    private static FileConfiguration geyserFormFile;
     private static String title;
     private static String content;
     private static String goBackButtonName;
     private static String closeButtonName;
 
     public static void setupValue() {
+        geyserFormFile = GeyserFormFile.get();
         String stringPath = "form.rule.";
         title = geyserFormFile.getString(stringPath + "title");
         content = geyserFormFile.getString(stringPath + "content");

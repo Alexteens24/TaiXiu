@@ -1,6 +1,7 @@
 package com.cortezromeo.taixiu.geyserform;
 
 import com.cortezromeo.taixiu.TaiXiu;
+import com.cortezromeo.taixiu.api.SessionSnapshot;
 import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.file.GeyserFormFile;
 import com.cortezromeo.taixiu.language.Messages;
@@ -12,12 +13,13 @@ import org.geysermc.cumulus.form.ModalForm;
 
 public class InfoGeyserForm {
 
-    private static final FileConfiguration geyserFormFile = GeyserFormFile.get();
+    private static FileConfiguration geyserFormFile;
     private static String title;
     private static String goBackButtonName;
     private static String closeButtonName;
 
     public static void setupValue() {
+        geyserFormFile = GeyserFormFile.get();
         String stringPath = "form.info.";
         title = geyserFormFile.getString(stringPath + "title");
         goBackButtonName = geyserFormFile.getString(stringPath + "button.goBack.name");
@@ -37,15 +39,16 @@ public class InfoGeyserForm {
     }
 
     private static String getContent(ISession session) {
+        SessionSnapshot snapshot = session.snapshot();
         String content = geyserFormFile.getString("form.info.content.content");
-        content = content.replace("%session%", String.valueOf(session.getSession()));
+        content = content.replace("%session%", String.valueOf(snapshot.id()));
         content = content.replace("%time%", String.valueOf(TaiXiuManager.getTaiXiuTask().getTime()));
 
         String xiuPlayersFormat = geyserFormFile.getString("form.info.content.placeholders.xiuPlayers");
         StringBuilder xiuPlayers = new StringBuilder();
-        if (!session.getXiuPlayers().isEmpty()) {
-            for (String player : session.getXiuPlayers().keySet()) {
-                xiuPlayers.append(xiuPlayersFormat.replace("%player%", player).replace("%money%", MessageUtil.getFormatMoneyDisplay(session.getXiuPlayers().get(player))));
+        if (!snapshot.xiuBets().isEmpty()) {
+            for (var entry : snapshot.xiuBets().entrySet()) {
+                xiuPlayers.append(xiuPlayersFormat.replace("%player%", entry.getKey()).replace("%money%", MessageUtil.getFormatMoneyDisplay(entry.getValue())));
             }
             content = content.replace("%xiuPlayers%", xiuPlayers);
         } else
@@ -53,9 +56,9 @@ public class InfoGeyserForm {
 
         String taiPlayersFormat = geyserFormFile.getString("form.info.content.placeholders.taiPlayers");
         StringBuilder taiPlayers = new StringBuilder();
-        if (!session.getTaiPlayers().isEmpty()) {
-            for (String player : session.getTaiPlayers().keySet()) {
-                taiPlayers.append(taiPlayersFormat.replace("%player%", player).replace("%money%", MessageUtil.getFormatMoneyDisplay(session.getTaiPlayers().get(player))));
+        if (!snapshot.taiBets().isEmpty()) {
+            for (var entry : snapshot.taiBets().entrySet()) {
+                taiPlayers.append(taiPlayersFormat.replace("%player%", entry.getKey()).replace("%money%", MessageUtil.getFormatMoneyDisplay(entry.getValue())));
             }
             content = content.replace("%taiPlayers%", taiPlayers);
         } else

@@ -15,10 +15,11 @@ import org.bukkit.entity.Player;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class BossBarManager {
 
-    public static Map<Player, BossBar> bossBarPlayers = new HashMap<>();
+    public static final Map<Player, BossBar> bossBarPlayers = new ConcurrentHashMap<>();
     private static ISession currentBossBarSession;
     public static boolean reloadingBossBar;
     private static boolean bbReloadingEnable;
@@ -34,10 +35,11 @@ public class BossBarManager {
     public static int timePerSession;
     private static int timeDisabling;
     private static double timeReloading;
-    private static double timeReloadingCount;
+    private static long reloadingStartedAt;
 
     public static void setupValue() {
         FileConfiguration config = TaiXiu.plugin.getConfig();
+        bbReloadingColor.clear();
 
         timePerSession = config.getInt("task.taiXiuTask.time-per-session");
         currentBossBarSession = TaiXiuManager.getTaiXiuTask().getSession();
@@ -63,20 +65,32 @@ public class BossBarManager {
         timeReloading = config.getDouble("boss-bar.type.reloading.time");
         if (timeReloading <= 0)
             bbReloadingEnable = false;
-        timeReloadingCount = 0;
+        reloadingStartedAt = 0;
 
+    }
+
+    public static void onSessionSwap(ISession completedSession, ISession newSession) {
+        bbReloadingSession = completedSession;
+        currentBossBarSession = newSession;
+        reloadingStartedAt = System.currentTimeMillis();
+        reloadingBossBar = bbReloadingEnable;
     }
 
     public static void setReloadingBossBar(boolean status) {
         if (!bbReloadingEnable)
             return;
 
+        if (status && !reloadingBossBar) reloadingStartedAt = System.currentTimeMillis();
         reloadingBossBar = status;
     }
 
     public static void toggleBossBar(Player p) {
         if (p == null)
             return;
+        if (!Bukkit.isOwnedByCurrentRegion(p)) {
+            TaiXiu.scheduler.runEntity(p, () -> toggleBossBar(p));
+            return;
+        }
 
         if (bossBarPlayers.containsKey(p)) {
             bossBarPlayers.get(p).removeAll();
@@ -101,6 +115,11 @@ public class BossBarManager {
     public static void putValueBossBar(Player p, int timeLeft) {
         if (p == null)
             return;
+        if (!Bukkit.isOwnedByCurrentRegion(p)) {
+            int capturedTime = timeLeft;
+            TaiXiu.scheduler.runEntity(p, () -> putValueBossBar(p, capturedTime));
+            return;
+        }
 
         if (!TaiXiu.plugin.getConfig().getBoolean("boss-bar.enabled")) {
             if (bossBarPlayers.containsKey(p)) {
@@ -136,7 +155,9 @@ public class BossBarManager {
                 bossBarTitle = bossBarTitle.replace("%currencyName%", MessageUtil.getCurrencyName(bbReloadingSession.getCurrencyType()));
                 bossBarTitle = bossBarTitle.replace("%currencySymbol%", MessageUtil.getCurrencySymbol(bbReloadingSession.getCurrencyType()));
                 bossBarTitle = bossBarTitle.replace("%numberOfPlayers%", String.valueOf(
-                        (bbReloadingSession.getResult() == TaiXiuResult.XIU ? bbReloadingSession.getXiuPlayers().size() : bbReloadingSession.getTaiPlayers().size())));
+                        (bbReloadingSession.getResult() == TaiXiuResult.XIU
+                                ? bbReloadingSession.getXiuPlayerSnapshot().size()
+                                : bbReloadingSession.getTaiPlayerSnapshot().size())));
                 bossBarTitle = bossBarTitle.replace("%money%",
                         (bbReloadingSession.getResult() == TaiXiuResult.XIU ? TaiXiuManager.getXiuBetFormat(bbReloadingSession) : TaiXiuManager.getTaiBetFormat(bbReloadingSession)));
 
@@ -144,12 +165,8 @@ public class BossBarManager {
 
                 bossBarPlayers.get(p).setStyle(bbReloadingStyle);
 
-                try {
-                    bossBar.setProgress(timeReloadingCount / timeReloading);
-                    timeReloadingCount++;
-                } catch (Exception e) {
-                    bossBar.setProgress(1);
-                }
+                double elapsedSeconds = (System.currentTimeMillis() - reloadingStartedAt) / 1000.0;
+                bossBar.setProgress(Math.max(0, Math.min(1, elapsedSeconds / timeReloading)));
 
                 if (bbReloadingColor.get(TaiXiuResult.XIU) == null)
                     bossBar.setColor(bbReloadingColor.get(TaiXiuResult.NONE));
@@ -160,9 +177,9 @@ public class BossBarManager {
                         bossBar.setColor(bbReloadingColor.get(TaiXiuResult.TAI));
                 }
 
-                if (timeReloadingCount / timeReloading == 1) {
+                if (elapsedSeconds >= timeReloading) {
                     setReloadingBossBar(false);
-                    timeReloadingCount = 0;
+                    reloadingStartedAt = 0;
                     currentBossBarSession = TaiXiuManager.getTaiXiuTask().getSession();
                     timePerSession = timeLeft;
                 }
@@ -198,5 +215,14 @@ public class BossBarManager {
                 bossBarPlayers.remove(p);
             }
         }
+    }
+
+    public static void remove(Player player) {
+        if (player != null && !Bukkit.isOwnedByCurrentRegion(player)) {
+            TaiXiu.scheduler.runEntity(player, () -> remove(player));
+            return;
+        }
+        BossBar bossBar = bossBarPlayers.remove(player);
+        if (bossBar != null) bossBar.removeAll();
     }
 }

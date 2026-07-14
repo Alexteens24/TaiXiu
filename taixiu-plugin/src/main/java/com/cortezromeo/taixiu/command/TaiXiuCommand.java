@@ -2,6 +2,7 @@ package com.cortezromeo.taixiu.command;
 
 import com.cortezromeo.taixiu.TaiXiu;
 import com.cortezromeo.taixiu.api.TaiXiuResult;
+import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.geyserform.MenuGeyserForm;
 import com.cortezromeo.taixiu.inventory.TaiXiuInfoInventory;
 import com.cortezromeo.taixiu.language.Messages;
@@ -95,18 +96,18 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                         return false;
                     }
 
-                    try {
-                        if (DatabaseManager.checkExistsFileData(session)) {
-                            DatabaseManager.loadSessionData(session);
-                            new TaiXiuInfoInventory(p, DatabaseManager.getSessionData(session)).open();
-                        } else {
-                            if (!DatabaseManager.taiXiuData.containsKey(session)) {
-                                sendMessage(p, Messages.INVALID_SESSION.replace("%session%", String.valueOf(session)));
-                            }
-                        }
-                    } catch (Exception e) {
-                        MessageUtil.throwErrorMessage("<taixiucommand.java<case<thongtin>>>" + e);
+                    ISession cached = DatabaseManager.getSessionData(session);
+                    if (cached != null) {
+                        new TaiXiuInfoInventory(p, cached).open();
+                        return true;
                     }
+                    DatabaseManager.loadSessionDataAsync(session).whenComplete((loaded, error) -> {
+                        if (error != null || loaded == null) {
+                            sendMessage(p, Messages.INVALID_SESSION.replace("%session%", String.valueOf(session)));
+                            return;
+                        }
+                        TaiXiu.scheduler.runEntity(p, () -> new TaiXiuInfoInventory(p, loaded).open());
+                    });
 
                     return false;
                 default:

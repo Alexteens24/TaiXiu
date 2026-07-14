@@ -63,15 +63,17 @@ public class MessageUtil {
     }
 
     public static void sendMessage(Player player, String message) {
-        if (player == null | message.equals(""))
+        if (player == null || message == null || message.isEmpty())
             return;
-
-        message = message.replace("%prefix%" , Messages.PREFIX);
-
-        if (!TaiXiu.support.isPlaceholderAPISupported())
-            player.sendMessage(TaiXiu.nms.addColor(message));
-        else
-            player.sendMessage(TaiXiu.nms.addColor(PlaceholderAPI.setPlaceholders(player, message)));
+        String resolved = message.replace("%prefix%" , Messages.PREFIX);
+        Runnable delivery = () -> {
+            if (!TaiXiu.support.isPlaceholderAPISupported())
+                player.sendMessage(TaiXiu.nms.addColor(resolved));
+            else
+                player.sendMessage(TaiXiu.nms.addColor(PlaceholderAPI.setPlaceholders(player, resolved)));
+        };
+        if (Bukkit.isOwnedByCurrentRegion(player)) delivery.run();
+        else TaiXiu.scheduler.runEntity(player, delivery);
     }
 
     // only use for testing plugin

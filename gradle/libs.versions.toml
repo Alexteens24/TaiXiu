@@ -1,0 +1,29 @@
+[versions]
+paper = "1.21.4-R0.1-SNAPSHOT"
+annotations = "24.1.0"
+config-updater = "2.2"
+vault-unlocked = "2.11"
+placeholder-api = "2.11.6"
+floodgate = "2.2.4-SNAPSHOT"
+json = "20250107"
+player-points = "3.2.7"
+sqlite = "3.53.1.0"
+junit = "5.12.2"
+junit-platform = "1.12.2"
+shadow = "9.5.1"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }
+config-updater = { module = "com.tchristofferson:ConfigUpdater", version.ref = "config-updater" }
+vault-unlocked-api = { module = "net.milkbowl.vault:VaultUnlockedAPI", version.ref = "vault-unlocked" }
+placeholder-api = { module = "me.clip:placeholderapi", version.ref = "placeholder-api" }
+floodgate-api = { module = "org.geysermc.floodgate:api", version.ref = "floodgate" }
+json = { module = "org.json:json", version.ref = "json" }
+player-points = { module = "org.black_ixx:playerpoints", version.ref = "player-points" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

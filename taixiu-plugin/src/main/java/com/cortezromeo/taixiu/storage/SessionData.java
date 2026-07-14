@@ -2,10 +2,13 @@ package com.cortezromeo.taixiu.storage;
 
 import com.cortezromeo.taixiu.TaiXiu;
 import com.cortezromeo.taixiu.api.CurrencyTyppe;
+import com.cortezromeo.taixiu.api.SessionSnapshot;
 import com.cortezromeo.taixiu.api.TaiXiuResult;
 import com.cortezromeo.taixiu.api.storage.ISession;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class SessionData implements ISession {
 
@@ -17,6 +20,8 @@ public class SessionData implements ISession {
     private HashMap<String, Long> xiuPlayers;
     private TaiXiuResult result;
     private CurrencyTyppe currencyType;
+    private final HashMap<String, UUID> playerIds = new HashMap<>();
+    private final HashMap<String, Boolean> taxBypass = new HashMap<>();
 
     public SessionData(long session, int dice1, int dice2, int dice3, TaiXiuResult result, HashMap<String, Long> taiPlayers, HashMap<String, Long> xiuPlayers, CurrencyTyppe currencyType) {
         this.session = session;
@@ -24,124 +29,158 @@ public class SessionData implements ISession {
         this.dice2 = dice2;
         this.dice3 = dice3;
         this.result = result;
-        this.taiPlayers = taiPlayers;
-        this.xiuPlayers = xiuPlayers;
-        if (currencyType != null)
-            if (currencyType == CurrencyTyppe.PLAYERPOINTS) {
-                if (TaiXiu.support.getPlayerPointsAPI() == null)
-                    this.currencyType = CurrencyTyppe.VAULT;
-            } else this.currencyType = currencyType;
-        else
-            this.currencyType = CurrencyTyppe.VAULT;
+        this.taiPlayers = new HashMap<>(taiPlayers);
+        this.xiuPlayers = new HashMap<>(xiuPlayers);
+        this.currencyType = currencyType == null ? CurrencyTyppe.VAULT : currencyType;
     }
 
+    public static SessionData copyOf(ISession source) {
+        if (source instanceof SessionData sessionData) return sessionData.copy();
+        SessionData copy = new SessionData(source.getSession(), source.getDice1(), source.getDice2(), source.getDice3(),
+                source.getResult(), new HashMap<>(source.getTaiPlayerSnapshot()), new HashMap<>(source.getXiuPlayerSnapshot()),
+                source.getCurrencyType());
+        return copy;
+    }
+
+    private synchronized SessionData copy() {
+        SessionData copy = new SessionData(session, dice1, dice2, dice3, result, taiPlayers, xiuPlayers, currencyType);
+        copy.playerIds.putAll(playerIds);
+        copy.taxBypass.putAll(taxBypass);
+        return copy;
+    }
+
+    public synchronized void registerPlayer(String name, UUID playerId, boolean bypassTax) {
+        playerIds.put(name, playerId);
+        taxBypass.put(name, bypassTax);
+    }
+
+    public synchronized UUID getPlayerId(String name) { return playerIds.get(name); }
+    public synchronized boolean hasTaxBypass(String name) { return taxBypass.getOrDefault(name, false); }
+
     @Override
-    public long getSession() {
+    public synchronized long getSession() {
         return session;
     }
 
     @Override
-    public void setSession(long session) {
+    public synchronized void setSession(long session) {
         this.session = session;
     }
 
     @Override
-    public int getDice1() {
+    public synchronized int getDice1() {
         return dice1;
     }
 
     @Override
-    public void setDice1(int dice1) {
+    public synchronized void setDice1(int dice1) {
         this.dice1 = dice1;
     }
 
     @Override
-    public int getDice2() {
+    public synchronized int getDice2() {
         return dice2;
     }
 
     @Override
-    public void setDice2(int dice2) {
+    public synchronized void setDice2(int dice2) {
         this.dice2 = dice2;
     }
 
     @Override
-    public int getDice3() {
+    public synchronized int getDice3() {
         return dice3;
     }
 
     @Override
-    public void setDice3(int dice3) {
+    public synchronized void setDice3(int dice3) {
         this.dice3 = dice3;
     }
 
     @Override
-    public TaiXiuResult getResult() {
+    public synchronized TaiXiuResult getResult() {
         return result;
     }
 
     @Override
-    public void setResult(TaiXiuResult result) {
+    public synchronized void setResult(TaiXiuResult result) {
         this.result = result;
     }
 
     @Override
-    public HashMap<String, Long> getTaiPlayers() {
-        return taiPlayers;
+    public synchronized HashMap<String, Long> getTaiPlayers() {
+        return new HashMap<>(taiPlayers);
     }
 
     @Override
-    public HashMap<String, Long> getXiuPlayers() {
-        return xiuPlayers;
+    public synchronized HashMap<String, Long> getXiuPlayers() {
+        return new HashMap<>(xiuPlayers);
     }
 
     @Override
-    public void addTaiPlayer(String playerName, Long money) {
-        getTaiPlayers().put(playerName, money);
+    public synchronized void addTaiPlayer(String playerName, Long money) {
+        taiPlayers.put(playerName, money);
     }
 
     @Override
-    public void addXiuPlayer(String playerName, Long money) {
-        getXiuPlayers().put(playerName, money);
+    public synchronized void addXiuPlayer(String playerName, Long money) {
+        xiuPlayers.put(playerName, money);
     }
 
     @Override
-    public void removeTaiPlayer(String playerName) {
+    public synchronized void removeTaiPlayer(String playerName) {
         taiPlayers.remove(playerName);
+        cleanupPlayerMetadata(playerName);
     }
 
     @Override
-    public void removeXiuPlayer(String playerName) {
+    public synchronized void removeXiuPlayer(String playerName) {
         xiuPlayers.remove(playerName);
+        cleanupPlayerMetadata(playerName);
     }
 
     @Override
-    public void setTaiPlayer(HashMap<String, Long> hashmap) {
-        taiPlayers = hashmap;
+    public synchronized void setTaiPlayer(HashMap<String, Long> hashmap) {
+        taiPlayers = new HashMap<>(hashmap);
     }
 
     @Override
-    public void setXiuPlayer(HashMap<String, Long> hashmap) {
-        xiuPlayers = hashmap;
+    public synchronized void setXiuPlayer(HashMap<String, Long> hashmap) {
+        xiuPlayers = new HashMap<>(hashmap);
     }
 
     @Override
-    public CurrencyTyppe getCurrencyType() {
+    public synchronized CurrencyTyppe getCurrencyType() {
         if (this.currencyType == null )
             return CurrencyTyppe.VAULT;
-        if (this.currencyType == CurrencyTyppe.PLAYERPOINTS)
-            if (TaiXiu.support.getPlayerPointsAPI() == null)
-                return CurrencyTyppe.VAULT;
         return this.currencyType;
     }
 
     @Override
-    public void setCurrencyType(CurrencyTyppe currencyType) {
-        if (this.currencyType == CurrencyTyppe.PLAYERPOINTS)
-            if (TaiXiu.support.getPlayerPointsAPI() == null) {
-                this.currencyType = CurrencyTyppe.VAULT;
-                return;
-            }
-        this.currencyType = currencyType;
+    public synchronized void setCurrencyType(CurrencyTyppe currencyType) {
+        this.currencyType = currencyType == null ? CurrencyTyppe.VAULT : currencyType;
+    }
+
+    @Override
+    public synchronized Map<String, Long> getTaiPlayerSnapshot() {
+        return Map.copyOf(taiPlayers);
+    }
+
+    @Override
+    public synchronized Map<String, Long> getXiuPlayerSnapshot() {
+        return Map.copyOf(xiuPlayers);
+    }
+
+    @Override
+    public synchronized SessionSnapshot snapshot() {
+        return new SessionSnapshot(session, dice1, dice2, dice3, result,
+                getCurrencyType().toCurrencyType(), taiPlayers, xiuPlayers);
+    }
+
+    private void cleanupPlayerMetadata(String playerName) {
+        if (!taiPlayers.containsKey(playerName) && !xiuPlayers.containsKey(playerName)) {
+            playerIds.remove(playerName);
+            taxBypass.remove(playerName);
+        }
     }
 }

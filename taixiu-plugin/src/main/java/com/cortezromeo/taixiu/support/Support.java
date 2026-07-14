@@ -6,7 +6,6 @@ import com.cortezromeo.taixiu.geyserform.InfoGeyserForm;
 import com.cortezromeo.taixiu.geyserform.MenuGeyserForm;
 import com.cortezromeo.taixiu.geyserform.RuleGeyserForm;
 import com.cortezromeo.taixiu.util.MessageUtil;
-import com.tcoded.folialib.FoliaLib;
 import net.milkbowl.vault.economy.Economy;
 import org.black_ixx.playerpoints.PlayerPoints;
 import org.black_ixx.playerpoints.PlayerPointsAPI;
@@ -17,14 +16,13 @@ import static com.cortezromeo.taixiu.util.MessageUtil.log;
 
 public class Support {
 
-    public PlayerPointsAPI playerPointsAPI;
-    public Economy vaultEconomyAPI;
-    public DiscordSupport discordSupport;
-    public FoliaLib foliaLib;
-    public boolean placeholderAPISupported = false;
-    public boolean floodgateSupported = false;
-    public boolean playerPointsSupported = false;
-    public boolean vaultSupported = false;
+    public volatile PlayerPointsAPI playerPointsAPI;
+    public volatile Economy vaultEconomyAPI;
+    public volatile DiscordSupport discordSupport;
+    public volatile boolean placeholderAPISupported = false;
+    public volatile boolean floodgateSupported = false;
+    public volatile boolean playerPointsSupported = false;
+    public volatile boolean vaultSupported = false;
 
     public boolean isPlaceholderAPISupported() {
       return placeholderAPISupported;
@@ -50,25 +48,14 @@ public class Support {
         return discordSupport;
     }
 
-    public FoliaLib getFoliaLib() {
-        return foliaLib;
-    }
-
-    public boolean isFoliaLibSupported() {
-        return foliaLib.isFolia();
-    }
-
-    public void setupSupports() {
-        // FoliaLib
-        foliaLib = new FoliaLib(TaiXiu.plugin);
-
+    public boolean setupSupports() {
         // Vault
         if (Bukkit.getPluginManager().getPlugin("Vault") != null) {
             setupVault();
         } else {
             log("&cThe &bTai Xiu &cplugin requires the &6Vault&c plugin and an &6Economy&c plugin to function properly.");
             Bukkit.getPluginManager().disablePlugin(TaiXiu.plugin);
-            return;
+            return false;
         }
 
         // PlayerPoints
@@ -92,10 +79,13 @@ public class Support {
             floodgateSupported = true;
             setupGeyserForm();
         }
+        return vaultSupported;
     }
 
     public boolean setupVault() {
-        if (TaiXiu.plugin.getServer().getPluginManager().getPlugin("Vault") == null)
+        vaultSupported = false;
+        vaultEconomyAPI = null;
+        if (!TaiXiu.plugin.getServer().getPluginManager().isPluginEnabled("Vault"))
             return false;
 
         RegisteredServiceProvider<Economy> rsp = TaiXiu.plugin.getServer().getServicesManager().getRegistration(Economy.class);
@@ -123,6 +113,26 @@ public class Support {
             RuleGeyserForm.setupValue();
             BetGeyserForm.setupValue();
         }
+    }
+
+    public void reloadConfigurableSupports() {
+        if (discordSupport != null) discordSupport.close();
+        discordSupport = new DiscordSupport(TaiXiu.plugin.getConfig().getString("discord-webhook-settings.webhookURL"));
+        floodgateSupported = Bukkit.getPluginManager().isPluginEnabled("floodgate")
+                && TaiXiu.plugin.getConfig().getBoolean("floodgate-settings.enabled");
+        setupGeyserForm();
+        vaultSupported = setupVault();
+        if (Bukkit.getPluginManager().isPluginEnabled("PlayerPoints")) {
+            playerPointsAPI = PlayerPoints.getInstance().getAPI();
+            playerPointsSupported = true;
+        } else {
+            playerPointsAPI = null;
+            playerPointsSupported = false;
+        }
+    }
+
+    public void close() {
+        if (discordSupport != null) discordSupport.close();
     }
 
 }
