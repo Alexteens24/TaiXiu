@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="TaiXiu logo">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff9b57"/><stop offset="1" stop-color="#c72f47"/></linearGradient></defs>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <g fill="#fff"><rect x="24" y="24" width="80" height="80" rx="18" opacity=".96"/><circle cx="43" cy="43" r="7" fill="#d94343"/><circle cx="85" cy="43" r="7" fill="#d94343"/><circle cx="64" cy="64" r="7" fill="#d94343"/><circle cx="43" cy="85" r="7" fill="#d94343"/><circle cx="85" cy="85" r="7" fill="#d94343"/></g>
+</svg>

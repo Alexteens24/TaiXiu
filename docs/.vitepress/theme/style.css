@@ -1,0 +1,29 @@
+:root {
+  --vp-c-brand-1: #e34b4b;
+  --vp-c-brand-2: #f26b4f;
+  --vp-c-brand-3: #ff9b57;
+  --vp-c-brand-soft: rgba(227, 75, 75, 0.14);
+  --vp-button-brand-bg: #d94343;
+  --vp-button-brand-hover-bg: #ee5d47;
+  --vp-button-brand-active-bg: #b9323b;
+}
+
+.dark {
+  --vp-c-brand-1: #ff8580;
+  --vp-c-brand-2: #ff9b73;
+  --vp-c-brand-3: #ffc078;
+  --vp-c-brand-soft: rgba(255, 133, 128, 0.16);
+  --vp-button-brand-bg: #e65c58;
+  --vp-button-brand-hover-bg: #ff7770;
+  --vp-button-brand-active-bg: #c7474d;
+}
+
+.vp-doc { animation: fade-in-up 0.4s cubic-bezier(.16, 1, .3, 1); }
+.vp-doc a { font-weight: 600; }
+.vp-doc table td code { white-space: nowrap; }
+.VPImage.logo { border-radius: 10px; }
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

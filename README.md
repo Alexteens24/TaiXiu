@@ -6,6 +6,7 @@
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Paper 1.21.4+](https://img.shields.io/badge/Paper-1.21.4%2B-blue.svg)](https://papermc.io/)
 [![License GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/Documentation-GitHub%20Pages-e34b4b.svg)](https://alexteens24.github.io/TaiXiu/)
 
 A modernized Tai Xiu plugin for Paper and Folia, focused on safe economy transactions, SQLite persistence, and crash recovery.
 

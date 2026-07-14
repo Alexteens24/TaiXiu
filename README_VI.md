@@ -6,6 +6,7 @@
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Paper 1.21.4+](https://img.shields.io/badge/Paper-1.21.4%2B-blue.svg)](https://papermc.io/)
 [![License GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
+[![Tài liệu](https://img.shields.io/badge/Tài%20liệu-GitHub%20Pages-e34b4b.svg)](https://alexteens24.github.io/TaiXiu/)
 
 Fork hiện đại hóa plugin Tài Xỉu cho Paper/Folia, tập trung vào an toàn giao dịch economy, lưu trữ SQLite và khả năng phục hồi sau crash.
 
