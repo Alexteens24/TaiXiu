@@ -75,6 +75,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                             .replace("%state%", TaiXiuManager.getState().toString()));
                     return false;
                 case "health":
+                case "suckhoe":
                     sendMessage(sender, TaiXiuManager.isHealthy()
                             ? "&aTaiXiu health: HEALTHY"
                             : "&cTaiXiu health-lock: " + TaiXiuManager.healthSummary());
@@ -166,15 +167,17 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     }
                     return false;
                 case "transaction":
-                    if (!args[1].equalsIgnoreCase("list")) {
-                        sendMessage(sender, "&cUsage: /taixiuadmin transaction list");
+                case "giaodich":
+                    if (!isAlias(args[1], "list", "danhsach")) {
+                        sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach");
                         return true;
                     }
                     listTransactions(sender, 1, null);
                     return true;
                 case "health":
-                    if (!args[1].equalsIgnoreCase("acknowledge")) {
-                        sendMessage(sender, "&cUsage: /taixiuadmin health acknowledge");
+                case "suckhoe":
+                    if (!isAlias(args[1], "acknowledge", "xacnhan")) {
+                        sendMessage(sender, "&cUsage: /taixiuadmin health|suckhoe acknowledge|xacnhan");
                         return true;
                     }
                     TaiXiuManager.acknowledgeHealth(sender.getName());
@@ -186,34 +189,34 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
             }
         }
 
-        if (args.length >= 3 && args[0].equalsIgnoreCase("transaction")
-                && args[1].equalsIgnoreCase("list")) {
+        if (args.length >= 3 && isAlias(args[0], "transaction", "giaodich")
+                && isAlias(args[1], "list", "danhsach")) {
             try {
                 int page = Math.max(1, Integer.parseInt(args[2]));
                 String status = args.length > 3 ? args[3].toUpperCase(Locale.ROOT) : null;
                 listTransactions(sender, page, status);
             } catch (NumberFormatException exception) {
-                sendMessage(sender, "&cUsage: /taixiuadmin transaction list [page] [status]");
+                sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach [page] [status]");
             }
             return true;
         }
 
-        if (args.length >= 4 && args[0].equalsIgnoreCase("transaction")) {
-            if (!args[3].equalsIgnoreCase("confirm")) {
-                sendMessage(sender, "&cReconciliation changes money/state. Append 'confirm' to execute it.");
+        if (args.length >= 4 && isAlias(args[0], "transaction", "giaodich")) {
+            if (!isAlias(args[3], "confirm", "xacnhan")) {
+                sendMessage(sender, "&cReconciliation changes money/state. Append confirm|xacnhan to execute it.");
                 return true;
             }
             String reason = args.length > 4
                     ? String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length))
                     : "Manual reconciliation via command";
-            TaiXiuManager.reconcileTransaction(args[1], args[2], sender.getName(), reason)
+            TaiXiuManager.reconcileTransaction(args[1], normalizeAction(args[2]), sender.getName(), reason)
                     .whenComplete((result, error) -> TaiXiu.scheduler.runGlobal(() -> sendMessage(sender,
                             error == null ? "&e" + result : "&c" + error.getMessage())));
             return true;
         }
 
-        if (args.length == 3 && args[0].equalsIgnoreCase("transaction")) {
-            sendMessage(sender, "&cUsage: /taixiuadmin transaction <id> <action> confirm [reason]");
+        if (args.length == 3 && isAlias(args[0], "transaction", "giaodich")) {
+            sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich <id> <action> confirm|xacnhan [reason]");
             return true;
         }
 
@@ -295,6 +298,20 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
         }));
     }
 
+    private static boolean isAlias(String input, String english, String vietnamese) {
+        return input.equalsIgnoreCase(english) || input.equalsIgnoreCase(vietnamese);
+    }
+
+    private static String normalizeAction(String action) {
+        return switch (action.toLowerCase(Locale.ROOT)) {
+            case "hoantat" -> "complete";
+            case "thatbai" -> "fail";
+            case "hoantien" -> "refund";
+            case "thulai" -> "retry";
+            default -> action;
+        };
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command cmd, String label, String[] args) {
         List<String> completions = new ArrayList<>();
@@ -308,7 +325,9 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                 commands.add("setcurrency");
                 commands.add("setresult");
                 commands.add("transaction");
+                commands.add("giaodich");
                 commands.add("health");
+                commands.add("suckhoe");
             }
             StringUtil.copyPartialMatches(args[0], commands, completions);
         }
@@ -318,17 +337,20 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     commands.add("VAULT");
                     commands.add("PLAYERPOINTS");
                 }
-                if (args[0].equalsIgnoreCase("transaction")) commands.add("list");
-                if (args[0].equalsIgnoreCase("health")) commands.add("acknowledge");
+                if (isAlias(args[0], "transaction", "giaodich")) commands.addAll(List.of("list", "danhsach"));
+                if (isAlias(args[0], "health", "suckhoe")) commands.addAll(List.of("acknowledge", "xacnhan"));
                 StringUtil.copyPartialMatches(args[1], commands, completions);
             }
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("transaction")) {
-            commands.addAll(List.of("complete", "fail", "refund", "retry"));
+        if (args.length == 3 && isAlias(args[0], "transaction", "giaodich")
+                && !isAlias(args[1], "list", "danhsach")) {
+            commands.addAll(List.of("complete", "hoantat", "fail", "thatbai",
+                    "refund", "hoantien", "retry", "thulai"));
             StringUtil.copyPartialMatches(args[2], commands, completions);
         }
-        if (args.length == 4 && args[0].equalsIgnoreCase("transaction")) {
-            commands.add("confirm");
+        if (args.length == 4 && isAlias(args[0], "transaction", "giaodich")
+                && !isAlias(args[1], "list", "danhsach")) {
+            commands.addAll(List.of("confirm", "xacnhan"));
             StringUtil.copyPartialMatches(args[3], commands, completions);
         }
         Collections.sort(completions);

@@ -98,9 +98,9 @@ You might need these plugins to utilize my plugin resources totally.
     - settime
     - setcurrency
     - setresult
-    - health `[acknowledge]`
-    - transaction list `[page] [status]`
-    - transaction `<id>` `<complete|fail|refund|retry>` confirm `[reason]`
+    - health/suckhoe `[acknowledge|xacnhan]`
+    - transaction/giaodich `list|danhsach [page] [status]`
+    - transaction/giaodich `<id>` `<complete|hoantat|fail|thatbai|refund|hoantien|retry|thulai>` `confirm|xacnhan [reason]`
 - `taixiu.tax.bypass`: Bypass taxes.
 
 ## Update history
