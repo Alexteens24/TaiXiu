@@ -25,6 +25,8 @@ database:
   history-cache-size: 256
   # Keep terminal transaction audit records for this many days.
   journal-retention-days: 90
+  # Wait for entity/global economy operations before unresolved journals are forced to UNKNOWN.
+  shutdown-transaction-timeout-seconds: 10
   retention:
     # ALL, DAYS, COUNT. COUNT=1 keeps only the latest completed session.
     mode: ALL

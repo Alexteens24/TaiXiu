@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static com.cortezromeo.taixiu.manager.DebugManager.setDebug;
 import static com.cortezromeo.taixiu.util.MessageUtil.log;
@@ -78,12 +79,19 @@ public final class TaiXiu extends JavaPlugin {
 
         initDatabase();
         TaiXiuManager.beginStartup();
-        TaiXiuManager.recoverPendingTransactions();
-        initCommand();
-        initListener();
-
-        TaiXiuManager.startTask(getConfig().getInt("task.taiXiuTask.time-per-session"));
-        BossBarManager.setupValue();
+        TaiXiuManager.recoverPendingTransactionsAsync().whenComplete((ignored, recoveryError) -> {
+            if (recoveryError != null)
+                getLogger().severe("Transaction recovery failed: " + recoveryError.getMessage());
+            if (!isEnabled()) return;
+            scheduler.runGlobal(() -> {
+                if (!isEnabled()) return;
+                initCommand();
+                initListener();
+                TaiXiuManager.finishStartup();
+                TaiXiuManager.startTask(getConfig().getInt("task.taiXiuTask.time-per-session"));
+                BossBarManager.setupValue();
+            });
+        });
 
         log("&f--------------------------------");
         log("&2  _____           _    __  __  _         ");
@@ -202,6 +210,10 @@ public final class TaiXiu extends JavaPlugin {
         }
         if (getConfig().getLong("database.journal-retention-days", 90) < 1) {
             getLogger().severe("database.journal-retention-days must be at least 1");
+            valid = false;
+        }
+        if (getConfig().getLong("database.shutdown-transaction-timeout-seconds", 10) < 1) {
+            getLogger().severe("database.shutdown-transaction-timeout-seconds must be at least 1");
             valid = false;
         }
         if (getConfig().getInt("discord-webhook-settings.queue-capacity", 256) < 16) {
@@ -328,6 +340,23 @@ public final class TaiXiu extends JavaPlugin {
 
         TaiXiuManager.beginShutdown();
         if (scheduler != null) scheduler.cancelAll();
+
+        if (databaseInitialized) {
+            long timeout = getConfig().getLong("database.shutdown-transaction-timeout-seconds", 10);
+            // Paper entity tasks share the disabling main thread and cannot make progress while onDisable waits.
+            // Folia region threads can still reach the barrier, so only Folia receives the configured grace period.
+            long effectiveTimeout = scheduler != null && scheduler.isFolia() ? timeout : 0;
+            Set<String> timedOut = TaiXiuManager.awaitInFlightTransactions(effectiveTimeout, TimeUnit.SECONDS);
+            if (!timedOut.isEmpty()) {
+                try {
+                    SessionDataStorage.markJournalsUnknownAsync(timedOut,
+                                    "Plugin shutdown timed out while economy operation was in flight")
+                            .get(Math.min(5, timeout), TimeUnit.SECONDS);
+                } catch (Exception error) {
+                    getLogger().severe("Could not persist UNKNOWN shutdown state: " + error.getMessage());
+                }
+            }
+        }
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             BossBarManager.remove(p);

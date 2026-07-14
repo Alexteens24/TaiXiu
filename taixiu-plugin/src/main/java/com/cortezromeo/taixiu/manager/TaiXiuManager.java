@@ -31,6 +31,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static com.cortezromeo.taixiu.manager.DebugManager.debug;
 import static com.cortezromeo.taixiu.util.MessageUtil.sendBroadCast;
@@ -42,7 +44,11 @@ public class TaiXiuManager {
     private static final Set<UUID> pendingBets = new HashSet<>();
     private static final Map<Long, CompletableFuture<Boolean>> settlementFutures = new HashMap<>();
     private static final Set<String> healthBlocks = ConcurrentHashMap.newKeySet();
+    private static final Set<CompletableFuture<Void>> inFlightCurrency = ConcurrentHashMap.newKeySet();
+    private static final Map<CompletableFuture<Void>, String> inFlightJournalIds = new ConcurrentHashMap<>();
+    private static final Object CURRENCY_LIFECYCLE_LOCK = new Object();
     private static volatile boolean acceptingTransactions = true;
+    private static volatile boolean shuttingDown;
 
     public static TaiXiuTask getTaiXiuTask() {
         return taiXiuTask;
@@ -88,15 +94,44 @@ public class TaiXiuManager {
     }
 
     public static void beginShutdown() {
-        acceptingTransactions = false;
+        synchronized (CURRENCY_LIFECYCLE_LOCK) {
+            acceptingTransactions = false;
+            shuttingDown = true;
+        }
         if (taiXiuTask != null) taiXiuTask.setState(TaiXiuState.PAUSING);
     }
 
     public static void beginStartup() {
-        acceptingTransactions = true;
+        synchronized (CURRENCY_LIFECYCLE_LOCK) {
+            acceptingTransactions = false;
+            shuttingDown = false;
+        }
         healthBlocks.clear();
         pendingBets.clear();
         settlementFutures.clear();
+        inFlightCurrency.clear();
+        inFlightJournalIds.clear();
+    }
+
+    public static void finishStartup() {
+        acceptingTransactions = true;
+    }
+
+    public static Set<String> awaitInFlightTransactions(long timeout, TimeUnit unit) {
+        CompletableFuture<?>[] barriers = inFlightCurrency.toArray(CompletableFuture[]::new);
+        if (barriers.length == 0) return Set.of();
+        try {
+            CompletableFuture.allOf(barriers).get(timeout, unit);
+            return Set.of();
+        } catch (TimeoutException timeoutError) {
+            Set<String> unresolved = Set.copyOf(inFlightJournalIds.values());
+            TaiXiu.plugin.getLogger().severe("Timed out waiting for " + inFlightCurrency.size()
+                    + " economy operation(s); marking " + unresolved.size() + " journal(s) UNKNOWN.");
+            return unresolved;
+        } catch (Exception error) {
+            TaiXiu.plugin.getLogger().severe("Could not await economy operations: " + error.getMessage());
+            return Set.copyOf(inFlightJournalIds.values());
+        }
     }
 
     public static int getTimeLeft() {
@@ -136,6 +171,11 @@ public class TaiXiuManager {
         DatabaseManager.taiXiuData.put(sessionData.getSession(), sessionData);
     }
 
+    /**
+     * @deprecated This method only checks the active and bounded history caches and never blocks for SQLite.
+     * Use {@link #getSessionDataAsync(long)} when historical data may not be cached.
+     */
+    @Deprecated(since = "3.0.0")
     public static ISession getSessionData(long session) {
         return DatabaseManager.getSessionData(session);
     }
@@ -244,7 +284,7 @@ public class TaiXiuManager {
         }
 
         pendingBets.add(playerId);
-        economyOnPlayer(player, () -> gateway.balance(offlinePlayer)).whenComplete((balance, providerError) ->
+        executeCurrency(playerId, null, () -> gateway.balance(offlinePlayer)).whenComplete((balance, providerError) ->
                 TaiXiu.scheduler.runGlobal(() -> {
                     if (providerError != null) {
                         pendingBets.remove(playerId);
@@ -280,7 +320,12 @@ public class TaiXiuManager {
                         return;
                     }
 
-                    economyOnPlayer(player, () -> gateway.debit(offlinePlayer, money)).whenComplete((debit, providerError) ->
+                    if (!acceptingTransactions) {
+                        pendingBets.remove(playerId);
+                        return;
+                    }
+                    executeCurrency(playerId, transactionId.toString(), () -> gateway.debit(offlinePlayer, money))
+                            .whenComplete((debit, providerError) ->
                             TaiXiu.scheduler.runGlobal(() -> {
                     if (providerError != null) {
                         pendingBets.remove(playerId);
@@ -348,17 +393,47 @@ public class TaiXiuManager {
                 }));
     }
 
-    private static <T> CompletableFuture<T> economyOnPlayer(Player player, Supplier<T> operation) {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        boolean scheduled = TaiXiu.scheduler.runEntity(player, () -> {
+    private static <T> CompletableFuture<T> executeCurrency(UUID playerId, String journalId,
+                                                             Supplier<T> operation) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        CompletableFuture<Void> barrier = new CompletableFuture<>();
+        synchronized (CURRENCY_LIFECYCLE_LOCK) {
+            if (shuttingDown)
+                return CompletableFuture.failedFuture(new IllegalStateException("Plugin is shutting down"));
+            inFlightCurrency.add(barrier);
+            if (journalId != null) inFlightJournalIds.put(barrier, journalId);
+        }
+        Runnable command = () -> {
             try {
-                future.complete(operation.get());
+                result.complete(operation.get());
             } catch (Throwable error) {
-                future.completeExceptionally(error);
+                result.completeExceptionally(error);
+            } finally {
+                barrier.complete(null);
+                inFlightCurrency.remove(barrier);
+                inFlightJournalIds.remove(barrier);
             }
-        });
-        if (!scheduled) future.completeExceptionally(new EntitySchedulerRetiredException());
-        return future;
+        };
+        try {
+            Player online = Bukkit.getPlayer(playerId);
+            if (online != null) {
+                if (!TaiXiu.scheduler.runEntity(online, command)) commandFailed(result, barrier, journalId,
+                        new EntitySchedulerRetiredException());
+            } else {
+                TaiXiu.scheduler.runGlobal(command);
+            }
+        } catch (RuntimeException schedulingError) {
+            commandFailed(result, barrier, journalId, schedulingError);
+        }
+        return result;
+    }
+
+    private static <T> void commandFailed(CompletableFuture<T> result, CompletableFuture<Void> barrier,
+                                          String journalId, Throwable error) {
+        result.completeExceptionally(error);
+        barrier.complete(null);
+        inFlightCurrency.remove(barrier);
+        if (journalId != null) inFlightJournalIds.remove(barrier);
     }
 
     private static void sendNotEnough(Player player, ISession data) {
@@ -419,44 +494,47 @@ public class TaiXiuManager {
         return !pendingBets.isEmpty();
     }
 
-    public static void recoverPendingTransactions() {
+    public static CompletableFuture<Void> recoverPendingTransactionsAsync() {
+        CompletableFuture<Void> recovery = CompletableFuture.completedFuture(null);
         for (JournalEntry entry : SessionDataStorage.unresolvedJournal()) {
+            recovery = recovery.thenCompose(ignored -> recoverTransaction(entry));
+        }
+        return recovery.whenComplete((ignored, error) -> {
+            if (shuttingDown) return;
+            if (error != null) markUnhealthy("RECOVERY_FAILURE");
+            if (!SessionDataStorage.unresolvedJournal().isEmpty()) markUnhealthy("UNRESOLVED_TRANSACTIONS");
+        });
+    }
+
+    private static CompletableFuture<Void> recoverTransaction(JournalEntry entry) {
             if ("PREPARED".equals(entry.status())) {
-                SessionDataStorage.markJournal(entry.id(), "UNKNOWN");
                 TaiXiu.plugin.getLogger().severe("Transaction " + entry.id() + " became UNKNOWN after an interrupted "
                         + entry.kind() + ". No automatic credit was performed; reconcile it with /taixiuadmin transaction.");
-                continue;
+                return SessionDataStorage.markJournalAsync(entry.id(), "UNKNOWN",
+                        "Interrupted before provider outcome was persisted");
             }
             if (!"APPLIED".equals(entry.status())) {
                 TaiXiu.plugin.getLogger().warning("Unresolved transaction " + entry.id() + " status=" + entry.status());
-                continue;
+                return CompletableFuture.completedFuture(null);
             }
             if ("PAYOUT".equals(entry.kind()) || SessionDataStorage.betExists(entry)) {
-                SessionDataStorage.markJournal(entry.id(), "COMPLETED");
-                continue;
+                return SessionDataStorage.markJournalAsync(entry.id(), "COMPLETED");
             }
             if (!TaiXiu.currencies.supports(entry.currency())) {
                 MessageUtil.throwErrorMessage("Cannot compensate applied debit " + entry.id()
                         + ": missing provider " + entry.currency());
-                continue;
+                return CompletableFuture.completedFuture(null);
             }
-            SessionDataStorage.markJournal(entry.id(), "PREPARED");
-            try {
-                CurrencyTransaction recovery = TaiXiu.currencies.gateway(entry.currency())
-                        .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount());
-                if (recovery.successful()) {
-                    SessionDataStorage.markJournal(entry.id(), "COMPENSATED");
-                } else {
-                    SessionDataStorage.markJournal(entry.id(), "UNKNOWN", recovery.error());
-                    MessageUtil.throwErrorMessage("Compensation rejected for " + entry.id() + ": " + recovery.error());
-                }
-            } catch (RuntimeException recoveryError) {
-                SessionDataStorage.markJournal(entry.id(), "UNKNOWN", recoveryError.getMessage());
-                MessageUtil.throwErrorMessage("Compensation became UNKNOWN for " + entry.id() + ": "
-                        + recoveryError.getMessage());
-            }
-        }
-        if (!SessionDataStorage.unresolvedJournal().isEmpty()) markUnhealthy("UNRESOLVED_TRANSACTIONS");
+            return SessionDataStorage.markJournalAsync(entry.id(), "PREPARED").thenCompose(ignored ->
+                    executeCurrency(entry.playerId(), entry.id(), () -> TaiXiu.currencies.gateway(entry.currency())
+                            .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount()))
+                            .handle((transaction, providerError) -> {
+                                if (providerError != null)
+                                    return new RecoveryState("UNKNOWN", providerError.getMessage());
+                                if (transaction.successful()) return new RecoveryState("COMPENSATED", null);
+                                return new RecoveryState("UNKNOWN", transaction.error());
+                            }).thenCompose(state -> SessionDataStorage.markJournalAsync(
+                                    entry.id(), state.status(), state.error())));
     }
 
     public static CompletableFuture<String> reconcileTransaction(String id, String requestedAction,
@@ -503,12 +581,14 @@ public class TaiXiuManager {
                     result.complete("Could not prepare reconciliation: " + prepareError.getMessage());
                     return;
                 }
-                TaiXiu.scheduler.runGlobal(() -> {
-                CurrencyTransaction transaction;
-                try {
-                    transaction = TaiXiu.currencies.gateway(entry.currency())
-                            .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount());
-                } catch (RuntimeException exception) {
+                if (!acceptingTransactions) {
+                    result.complete("Reconciliation cancelled because the plugin is shutting down");
+                    return;
+                }
+                executeCurrency(entry.playerId(), id, () -> TaiXiu.currencies.gateway(entry.currency())
+                        .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount()))
+                        .whenComplete((transaction, exception) -> {
+                if (exception != null) {
                     SessionDataStorage.markJournalAsync(id, "UNKNOWN", exception.getMessage())
                             .whenComplete((ignored, markError) -> result.complete(markError == null
                                     ? "Provider threw; transaction remains UNKNOWN: " + exception.getMessage()
@@ -544,12 +624,19 @@ public class TaiXiuManager {
         return reconcileTransaction(id, action, "legacy-api", "Legacy API reconciliation");
     }
 
+    /**
+     * @deprecated Settlement is asynchronous in 3.0. Returning from this method does not mean payouts completed.
+     * Use {@link #resultSeasonAsync(ISession, int, int, int)} and await its future.
+     */
+    @Deprecated(since = "3.0.0")
     public static void resultSeason(@NotNull ISession session, int dice1, int dice2, int dice3) {
         resultSeasonAsync(session, dice1, dice2, dice3);
     }
 
     public static CompletableFuture<Boolean> resultSeasonAsync(@NotNull ISession session, int dice1, int dice2, int dice3) {
         debug("RESULTING SESSION", "Session number " + session.getSession());
+
+        if (!acceptingTransactions || shuttingDown) return CompletableFuture.completedFuture(false);
 
         CompletableFuture<Boolean> existing = settlementFutures.get(session.getSession());
         if (existing != null) return existing;
@@ -690,8 +777,9 @@ public class TaiXiuManager {
                                 + id + ": " + prepareError.getMessage());
                         return;
                     }
-                    try {
-                        CurrencyTransaction refund = gateway.credit(player, amount);
+                    executeCurrency(player.getUniqueId(), id, () -> gateway.credit(player, amount))
+                            .whenComplete((refund, refundFailure) -> {
+                    if (refundFailure == null) {
                         String refundStatus = refund.successful() ? "COMPENSATED" : "UNKNOWN";
                         String refundError = refund.successful() ? null : refund.error();
                         SessionDataStorage.markJournalAsync(id, refundStatus, refundError)
@@ -702,11 +790,12 @@ public class TaiXiuManager {
                                 });
                         MessageUtil.throwErrorMessage("Bet persistence failed; refund=" + refund.successful()
                                 + ": " + persistenceError.getMessage());
-                    } catch (RuntimeException refundError) {
-                        SessionDataStorage.markJournalAsync(id, "UNKNOWN", refundError.getMessage());
+                    } else {
+                        SessionDataStorage.markJournalAsync(id, "UNKNOWN", refundFailure.getMessage());
                         MessageUtil.throwErrorMessage("Bet persistence and refund became UNKNOWN for "
-                                + id + ": " + refundError.getMessage());
+                                + id + ": " + refundFailure.getMessage());
                     }
+                            });
                 }));
     }
 
@@ -761,6 +850,10 @@ public class TaiXiuManager {
 
     private static void processNextPayout(Deque<PayoutWork> queue, CompletableFuture<Void> completion,
                                           AtomicReference<Throwable> firstFailure) {
+        if (!acceptingTransactions) {
+            completion.completeExceptionally(new IllegalStateException("Payout queue stopped during shutdown"));
+            return;
+        }
         PayoutWork work = queue.pollFirst();
         if (work == null) {
             Throwable failure = firstFailure.get();
@@ -774,12 +867,12 @@ public class TaiXiuManager {
                     new IllegalStateException("Currency provider unavailable: " + entry.currency()));
             return;
         }
-        Runnable providerCall = () -> {
+        executeCurrency(entry.playerId(), entry.id(), () -> TaiXiu.currencies.gateway(entry.currency())
+                .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount()))
+                .whenComplete((payout, error) -> {
             CompletableFuture<Void> journalUpdate;
             Throwable providerFailure = null;
-            try {
-                CurrencyTransaction payout = TaiXiu.currencies.gateway(entry.currency())
-                        .credit(Bukkit.getOfflinePlayer(entry.playerId()), entry.amount());
+            if (error == null) {
                 if (payout.successful()) {
                     playSound(Bukkit.getPlayer(entry.playerId()), SoundType.win);
                     sendMessage(Bukkit.getPlayer(entry.playerId()), work.message());
@@ -788,22 +881,12 @@ public class TaiXiuManager {
                     providerFailure = new IllegalStateException(payout.error());
                     journalUpdate = SessionDataStorage.markJournalAsync(entry.id(), "FAILED", payout.error());
                 }
-            } catch (RuntimeException error) {
+            } else {
                 providerFailure = error;
                 journalUpdate = SessionDataStorage.markJournalAsync(entry.id(), "UNKNOWN", error.getMessage());
             }
             finishPayoutAttempt(queue, completion, firstFailure, journalUpdate, providerFailure);
-        };
-        Player online = Bukkit.getPlayer(entry.playerId());
-        if (online != null) {
-            if (!TaiXiu.scheduler.runEntity(online, providerCall)) {
-                finishPayoutAttempt(queue, completion, firstFailure,
-                        SessionDataStorage.markJournalAsync(entry.id(), "FAILED", "Player entity scheduler retired"),
-                        new IllegalStateException("Player entity scheduler retired"));
-            }
-        } else {
-            TaiXiu.scheduler.runGlobal(providerCall);
-        }
+                });
     }
 
     private static void finishPayoutAttempt(Deque<PayoutWork> queue, CompletableFuture<Void> completion,
@@ -817,6 +900,7 @@ public class TaiXiuManager {
     }
 
     private record PayoutWork(JournalEntry entry, String message) { }
+    private record RecoveryState(String status, String error) { }
 
     private static final class EntitySchedulerRetiredException extends IllegalStateException {
         private EntitySchedulerRetiredException() { super("Player entity scheduler retired"); }

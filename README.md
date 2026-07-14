@@ -26,6 +26,8 @@ TaiXiu 3.0 requires **Java 21** and **Paper or Folia 1.21.4+**. The plugin now u
 
 Build from source with the bundled Gradle Wrapper: `./gradlew clean build`. The distributable plugin is written to `taixiu-plugin/build/libs/TaiXiu-3.0.0.jar`.
 
+Plugin developers upgrading from 2.x should read the [API 3.0 migration guide](docs/api-v3-migration.md). Release testing should follow the [Paper/Folia runtime checklist](docs/runtime-test-checklist.md); CI unit tests do not replace validation against a real economy provider.
+
 Dependencies and GitHub Actions are monitored weekly by Dependabot via `.github/dependabot.yml`. Use the wrapper instead of a system Gradle installation so builds use the pinned, verified Gradle version.
 
 ## Plugin requirements
