@@ -1,226 +1,270 @@
-![logo](https://i.imgur.com/CawZvhH.png)
+# TaiXiu 3.0
 
-Starting March 8th, 2024, TaiXiu by Thuong Nguyen (Cortez Romeo) transitions to an open-source model under the GNU GPL 3.0 license. If you're a developer, I kindly request that you contribute via pull requests rather than creating numerous forks. Let's ensure updates are accessible to all!
+[![Build](https://github.com/Alexteens24/TaiXiu/actions/workflows/build.yml/badge.svg)](https://github.com/Alexteens24/TaiXiu/actions/workflows/build.yml)
+[![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Paper 1.21.4+](https://img.shields.io/badge/Paper-1.21.4%2B-blue.svg)](https://papermc.io/)
+[![License GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
 
-## Description
-Tai Xiu is a game in the form of betting. In the game, there are three 6-sided dice numbered from 1-6. The dealer (system) will take the sum of the 03 dice that appear to give a final number to the player.
+Fork hiện đại hóa plugin Tài Xỉu cho Paper/Folia, tập trung vào an toàn giao dịch economy, lưu trữ SQLite và khả năng phục hồi sau crash.
 
-The player's task is to predict whether the result is Tai or Xiu. Xiu is the sum of 3 dice from 3-10, and Tai is 11-18. If the guess is correct, the player will win and receive money.
+Fork này được duy trì tại [Alexteens24/TaiXiu](https://github.com/Alexteens24/TaiXiu), dựa trên dự án gốc [CortezRomeo/TaiXiu](https://github.com/CortezRomeo/TaiXiu).
+
+> [!IMPORTANT]
+> Nhánh 3.0 hiện đang trong giai đoạn kiểm thử trước release. Build và unit test đã chạy thành công, nhưng checklist với economy provider thật trên Paper/Folia phải được hoàn thành trước khi dùng trên server production.
 
 > [!WARNING]
-> Disclaimer: This is a gambling plugin and it will have features to help players bet and win money. Because of the gambling nature, I will not be responsible for gambling terms and regulations related to your use of this plugin.
+> Đây là plugin có cơ chế đặt cược bằng tiền/điểm trong game. Người vận hành server tự chịu trách nhiệm về quy định, điều khoản và pháp luật áp dụng tại khu vực của mình.
 
-## Main features
-- Automatically updating files if there is a new update.
-- Configable messages, gui, etc..
-- Supporting API.
-- Supporting GUI
-- Supporting Hex Color
-- Supporting BossBar
-- Supporting Floodgate (GeyserMC)
-- Easily managing plugin database
-- Crash-aware economy transaction journal and SQLite session storage
+## Luật chơi
 
-## System requirements
-TaiXiu 3.0 requires **Java 21** and **Paper or Folia 1.21.4+**. The plugin now uses the public Paper API and has no version-specific NMS dependency.
+Hệ thống tung ba xúc xắc sáu mặt:
 
-Build from source with the bundled Gradle Wrapper: `./gradlew clean build`. The distributable plugin is written to `taixiu-plugin/build/libs/TaiXiu-3.0.0.jar`.
+- Tổng từ `4–10`: Xỉu.
+- Tổng từ `11–17`: Tài.
+- Tổng bằng `3` hoặc `18`: kết quả đặc biệt, cả hai cửa thua.
+- Nếu `bet-settings.disable-special: true`, kết quả `3/18` được điều chỉnh để không tạo cửa đặc biệt.
 
-Plugin developers upgrading from 2.x should read the [API 3.0 migration guide](docs/api-v3-migration.md). Release testing should follow the [Paper/Folia runtime checklist](docs/runtime-test-checklist.md); CI unit tests do not replace validation against a real economy provider.
+Khi người chơi thắng, số tiền nhận về là tiền cược ban đầu cộng lợi nhuận sau thuế. Với thuế `0%`, payout bằng `2 × tiền cược`.
 
-Dependencies and GitHub Actions are monitored weekly by Dependabot via `.github/dependabot.yml`. Use the wrapper instead of a system Gradle installation so builds use the pinned, verified Gradle version.
+## Điểm nổi bật của fork
 
-## Plugin requirements
-- [Vault](https://www.spigotmc.org/resources/vault.34315/)
-- [VaultUnlocked](https://www.spigotmc.org/resources/vaultunlocked.117277/) when running Folia
-- One economy plugin
--- Economy plugins: [iConomy](http://dev.bukkit.org/server-mods/iconomy) 4,5,6, [BOSEconomy](http://dev.bukkit.org/server-mods/boseconomy) 6 & 7, EssentialsEcon, 3Co, [MultiCurrency](http://dev.bukkit.org/server-mods/multicurrency), [MineConomy](http://dev.bukkit.org/server-mods/mineconomy), [eWallet](http://dev.bukkit.org/server-mods/ewallet), [EconXP](http://dev.bukkit.org/server-mods/econxp/), [CurrencyCore](http://dev.bukkit.org/server-mods/currency/), [CraftConomy](http://dev.bukkit.org/server-mods/craftconomy/), AEco, [Gringotts](http://dev.bukkit.org/server-mods/gringotts/), [BetterEconomy](https://www.spigotmc.org/resources/bettereconomy.96690/)
+- Java 21 và Paper API 1.21.4+; không còn phụ thuộc NMS theo từng phiên bản.
+- Scheduler native của Paper cho global, async và player entity; có đường thực thi economy thống nhất cho Paper/Folia.
+- SQLite WAL thay cho mỗi phiên một file YAML.
+- Transaction journal cho debit, payout và refund với các trạng thái phục hồi rõ ràng.
+- Health lock tự pause game khi database/provider không còn ở trạng thái an toàn.
+- Shutdown chờ economy operation đang chạy và đánh dấu `UNKNOWN` nếu không xác định được kết quả.
+- Lịch sử phiên dùng cache LRU có giới hạn; SQLite vẫn là nguồn dữ liệu chính.
+- Immutable API snapshots, cancellable pre-bet event và API async cho settlement/history.
+- Discord webhook có bounded queue, template cache và xử lý rate limit.
+- Gradle Kotlin DSL, dependency locking, JaCoCo, GitHub Actions và Dependabot.
+- Hỗ trợ message pack tiếng Anh và tiếng Việt.
+
+## Yêu cầu
+
+| Thành phần | Yêu cầu |
+|---|---|
+| Java | 21 |
+| Server | Paper 1.21.4+ hoặc Folia tương thích |
+| Economy bridge | Vault; dùng VaultUnlocked trên Folia |
+| Economy provider | Một provider tương thích với server và bridge đã chọn |
+
+Tích hợp tùy chọn:
+
+- PlaceholderAPI.
+- PlayerPoints.
+- Floodgate/Geyser cho Bedrock forms.
+- Discord Webhook.
+
 > [!CAUTION]
-> On Folia, the selected Vault implementation and economy provider must also support Folia.
+> `folia-supported: true` cho phép plugin được nạp trên Folia, nhưng Vault bridge và economy provider cũng phải hỗ trợ Folia. Hãy hoàn thành [runtime checklist](docs/runtime-test-checklist.md) với đúng provider của server trước khi triển khai production.
 
-## Storage and migration
+## Build
 
-Sessions, bets, payouts and the economy transaction journal are stored in one SQLite file, `plugins/TaiXiu/taixiu.db`. SQLite WAL mode is enabled and important economy transitions are committed immediately.
+Repository đã kèm Gradle Wrapper 9.6.1, không cần cài Gradle hệ thống:
 
-On the first 3.0 startup, if the database is empty, TaiXiu imports only the latest unfinished session from the old `session/*.yml` storage. Completed YAML history is intentionally not imported. The old folder is moved to a timestamped `session-legacy-*` archive so it can be inspected or backed up manually.
+```bash
+git clone https://github.com/Alexteens24/TaiXiu.git
+cd TaiXiu
+./gradlew clean build
+```
 
-History retention is configured at `database.retention`: `ALL` keeps every completed session, `DAYS` keeps a time window, and `COUNT` keeps the newest configured number of completed sessions. Sessions with pending payouts are never removed.
+Artifact được tạo tại:
 
-Changing `database.file` requires a server restart. Other validated settings, including retention, Discord webhook and Geyser forms, are refreshed by `/taixiuadmin reload`.
+```text
+taixiu-plugin/build/libs/TaiXiu-3.0.0.jar
+```
 
-### Transaction recovery
+Kiểm tra riêng:
 
-TaiXiu records an economy intent before changing a balance. Known provider rejections are marked failed; known applied changes are completed or compensated. If the server or economy provider stops at the exact point where TaiXiu cannot know whether money changed, the entry is marked `UNKNOWN` and is never credited automatically. This avoids silently duplicating money on providers that do not expose idempotency keys.
+```bash
+./gradlew test
+./gradlew check
+```
 
-Inspect and reconcile these entries explicitly:
+## Cài đặt
 
-- `/taixiuadmin health` and `/taixiuadmin health acknowledge`
-- `/taixiuadmin transaction list [page] [status]`
-- `/taixiuadmin transaction <id> complete confirm [reason]` — assert that the intended balance change already happened.
-- `/taixiuadmin transaction <id> fail confirm [reason]` — record a known provider rejection.
-- `/taixiuadmin transaction <id> refund confirm [reason]` — credit an ambiguous/applied debit after checking the provider ledger.
-- `/taixiuadmin transaction <id> retry confirm [reason]` — retry a payout after checking that it was not already credited.
+1. Cài Java 21 và Paper/Folia tương thích.
+2. Cài Vault cùng economy provider; với Folia hãy dùng bridge/provider hỗ trợ Folia.
+3. Chép `TaiXiu-3.0.0.jar` vào thư mục `plugins/`.
+4. Khởi động server một lần để sinh cấu hình và `plugins/TaiXiu/taixiu.db`.
+5. Chỉnh `plugins/TaiXiu/config.yml`, sau đó dùng `/taixiuadmin reload` hoặc restart server.
+6. Test debit, payout, restart và recovery trên server tạm trước khi mở cho người chơi.
 
-The game stays health-locked and paused while unresolved transactions exist. `health acknowledge` is an explicit operator override; verify the database and provider ledger before clearing it.
+Không thay file JAR hoặc xóa `taixiu.db` khi server đang chạy.
 
-For a live backup, use SQLite's backup API/command instead of copying only `taixiu.db`; otherwise stop the server first and copy the database after shutdown.
+## Phiên và dữ liệu
 
-## Soft-depend plugins
-You might need these plugins to utilize my plugin resources totally.
-- [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/)
-	-   **%taixiu_phien%** - Get the current session number
-    -   **%taixiu_timeleft%** - Get current session  time left 
-	-   **%taixiu_result_phien_{session_number}%** - Get the result of the session {session_number}
-	-   **%taixiu_resultformat_phien_{session_number}%** - Get the format result of the session {session_number} (based on message.yml)
-	-   **%taixiu_taiplayers_phien_{session_number}%** - List the players who bet on Tai
-	-   **%taixiu_xiuplayers_phien_{session_number}%** - List the players who bet on Xiu
-	-   **%taixiu_taiplayers_bet_phien_{session_number}%** - Get the total money of Tai
-	-   **%taixiu_xiuplayers_bet_phien_{session_number}%** - Get the total money of Xiu
-	-   **%taixiu_totalbet_phien_{session_number}%** - Get the total money of the session
+Phiên được lưu trong `plugins/TaiXiu/taixiu.db`:
 
-**Attention:** Change **{session_number}** to **current** if you want to get the last session.
-- [Floodgate API (GeyserMC)](https://geysermc.org/download#floodgate)
-	- This will let you be able to [use Bedrock forms](https://wiki.geysermc.org/geyser/forms/) which I already have set up for this plugin.
-- Discord Web Hook
-	- Send messages to discord of session's information.
-- [PlayerPoints](https://www.spigotmc.org/resources/playerpoints.80745/)
-    - Since version 2.3, TaiXiu supports multiple currencies for each playing session. PlayerPointsn now can be used as a second currency for players to bet. 
+- Database mới bắt đầu từ phiên `0`.
+- Phiên kế tiếp chỉ được tạo sau khi settlement, payout và journal của phiên hiện tại hoàn tất an toàn.
+- Khi restart, plugin đọc ID lớn nhất trong bảng `sessions`; locale `en/vi` không làm reset số phiên.
+- Nếu shutdown xảy ra giữa payout, phiên hiện tại có thể được giữ lại và health-lock cho tới khi transaction được kiểm tra.
 
-## Commands & subcommands & permissions
-- /taixiu `taixiu.use`
-  - The main command for the players to use.
-    - toggle
-    - luatchoi
-    - cuoc
-    - thongtin
-- /taixiuadmin `taixiu.admin`
-  - For the administrators to use to adjust stats or reload plugin.
-    - reload
-    - changestate
-    - settime
-    - setcurrency
-    - setresult
-    - health/suckhoe `[acknowledge|xacnhan]`
-    - transaction/giaodich `list|danhsach [page] [status]`
-    - transaction/giaodich `<id>` `<complete|hoantat|fail|thatbai|refund|hoantien|retry|thulai>` `confirm|xacnhan [reason]`
-- `taixiu.tax.bypass`: Bypass taxes.
+Các bảng chính gồm `sessions`, `bets`, `payouts` và `transaction_journal`. SQLite chạy WAL, foreign keys và schema migrations.
 
-## Update history
-<details>
-<summary>3.0.0</summary>
+### Nâng cấp từ 2.x
 
-	- Requires Java 21 and Paper/Folia 1.21.4+.
-	- Replaced YAML session files with SQLite, WAL, schema migrations and configurable retention.
-	- Added active-session YAML migration and crash recovery journal for debits and payouts.
-	- Added conservative UNKNOWN transaction handling and explicit admin reconciliation commands.
-	- Reworked economy providers to validate Vault and PlayerPoints transaction results.
-	- Replaced FoliaLib with native Paper global, async and entity schedulers.
-	- Added immutable API snapshots, a correctly spelled CurrencyType API and cancellable PlayerBetPreEvent.
-	- Fixed shared tax mutation, offline PlayerPoints payouts, task startup races, settlement races and recursive result retries.
-	- Replaced Maven with Gradle Kotlin DSL and added weekly Dependabot updates.
-</details>
-<details>
-<summary>2.8</summary>
+Ở lần khởi động 3.0 đầu tiên, nếu database còn trống, plugin chỉ import phiên YAML mới nhất chưa kết thúc. Thư mục `session/` cũ được đổi tên thành `session-legacy-<timestamp>` để lưu trữ. Lịch sử YAML đã hoàn tất không được import tự động.
 
- 	- Fixed: An error occurred when trying to setup files while starting the server.
-</details>
-<details>
-<summary>2.7</summary>
+Trước khi nâng cấp:
 
- 	- Fixed: Console spam caused by certain errors.
-	- Fixed: Menu errors on the latest server versions.
-	- Fixed: Server may crash or lag when using Discord webhooks.
-	- Fixed: Incorrect display of the "invalid-currency" message.
-	- Support Added: Folia support.
-	- Support Added: Compatibility with the latest server versions.
-	- Optimization: Refactored and optimized some parts of the code.
-	- Localization: Added English language support.
-	- Localization: Translated some parts of the interface to English.
-	- Feature Added: PlaceholderAPI %taixiu_timeleft% to get the remaining time of the current session.
-	- Permission Added: taixiu.tax.bypass to skip the tax.
-</details>
-<details>
-<summary>2.6</summary>
+1. Tắt server đúng cách.
+2. Backup toàn bộ `plugins/TaiXiu/` và dữ liệu economy provider.
+3. Thay JAR rồi khởi động server.
+4. Kiểm tra log migration, session hiện tại và `/taixiuadmin health`.
 
- 	- Supported the newest version of minecraft server
-	- Fixed misspelling
-	- Removed supporting DiscordSRV and now support Discord Web Hook instead! (https://www.youtube.com/watch?v=G_fRHkHQUNU)
-</details>
-<details>
-<summary>2.5</summary>
-	
-	- Supported 1.21.3
-	- Fixed Bossbar's still enabled even after turning off in config.yml
-	- Fixed spam console after turning off Bossbar
-	- Fixed player head in TaiXiu GUI turns into Bedrock (mostly happens because server-online is false)
-	- Added new placeholders for DiscordSRV
-</details>
-<details>
-<summary>2.4</summary>
-	
-	- Supported minecraft version 1.21.x
-	- Fixed spam console "<taixiutask.java>java.lang.NullPointerException: Cannot invoke "org.bukkit.entity.Player.getName()" because "p" is null"
-	- Optimized pom.xml
-</details>
-<details>
-<summary>2.3</summary>
-	
-	- Taixiu now supports PlayerPoints!
-	- New inventory, added "shortItem" to short specific values.
-	- Added /taixiuadmin setcurrency
-	- Optimized code.
-</details>
-<details>
-<summary>2.2</summary>
-	
-	- Fixed boss-bar does not work correctly.
-	- Fixed session sometime automatically reset when a player toggle notification.
-	- Fixed an error occurred when floodgate players use command "/taixiu"
-	- Optimized boss-bar
-	- Supported DiscordSRV! (100% Configable messages)
-</details>
-<details>
-<summary>2.1</summary>
-	
-	- Fixed BossSytle is not working as config
-</details>
-<details>
-<summary>2.0</summary>
-	
-	- Added GPL-3.0 license which should be added early
-	- Fixed misspelling
-	- Optimized code
-	- Fixed an error that makes console spam when opening a GUI if the server version is above 1.16.5
- 	- Added sound when the player wins or loses betting
-	- Added a message when the player loses betting
-	- Updated BossBar
-	- Supported Floodgate Forms
-</details>
-<details>
-<summary>1.1.5</summary>
-	
-	- Fixed an error relating to FilenameUtil caused console to spam while loading plugin
-</details>
-<details>
-<summary>1.1.4</summary>
-	
-	- Fixed an error that causes money is not given for floodgate player
-	- Fixed an error while giving a result
-	- Recaculated how tax works
-	- Updated PlaceholderAPI
-	- Optimized code
-</details>
+Developer dùng API 2.x cần đọc [API 3.0 migration guide](docs/api-v3-migration.md).
 
-## Contact
-[![Discord Server](https://discord.com/api/guilds/1187827789664096267/widget.png?style=banner3)](https://discord.gg/NWbTVddmBM)
+### Retention và backup
 
-## 3rd party libraries
-- [JetBrains Java Annotations](https://mvnrepository.com/artifact/org.jetbrains/annotations)
-- [ConfigUpdater](https://github.com/tchristofferson/Config-Updater)
-- [SQLite JDBC](https://github.com/xerial/sqlite-jdbc)
-- [JSON-java](https://github.com/stleary/JSON-java)
+`database.retention.mode` hỗ trợ:
 
-# Special Thanks To
-[<img src="https://user-images.githubusercontent.com/21148213/121807008-8ffc6700-cc52-11eb-96a7-2f6f260f8fda.png" alt="" width="150">](https://www.jetbrains.com)
+- `ALL`: giữ toàn bộ phiên.
+- `DAYS`: giữ phiên theo số ngày.
+- `COUNT`: giữ số phiên mới nhất.
 
-Jetbrains supports TaiXiu with their [Open Source Licenses](https://www.jetbrains.com/opensource/).
+Phiên còn payout chưa xử lý sẽ không bị retention xóa. Với live backup, hãy dùng SQLite backup API/command; nếu copy file thủ công, hãy tắt server và backup sau khi WAL đã checkpoint.
+
+## An toàn giao dịch
+
+TaiXiu ghi intent vào journal trước khi gọi economy provider. Các trạng thái quan trọng:
+
+- `PREPARED`: intent đã ghi, provider outcome chưa được xác nhận.
+- `APPLIED`: provider báo thay đổi tiền thành công.
+- `COMPLETED`: transaction và dữ liệu plugin đã hoàn tất.
+- `COMPENSATED`: debit đã được hoàn lại.
+- `FAILED`: provider từ chối rõ ràng.
+- `UNKNOWN`: không thể chứng minh tiền đã thay đổi hay chưa.
+
+Khi có `UNKNOWN` hoặc payout chưa xử lý, plugin health-lock và pause thay vì tự cộng tiền lần nữa. Economy provider không có idempotency key nên plugin không thể bảo đảm exactly-once tuyệt đối qua mọi thời điểm crash.
+
+Kiểm tra trước khi reconcile:
+
+```text
+/taixiuadmin health
+/taixiuadmin transaction list
+```
+
+Chỉ dùng `refund/retry/complete/fail` sau khi đã đối chiếu ledger hoặc balance thực tế của provider.
+
+## Commands
+
+### Người chơi — `taixiu.use`
+
+| Lệnh | Mô tả |
+|---|---|
+| `/taixiu` | Mở menu chính |
+| `/taixiu bet <tai|xiu> <amount>` | Đặt cược |
+| `/taixiu cuoc <tai|xiu> <amount>` | Alias tiếng Việt của bet |
+| `/taixiu info [session]` | Xem phiên hiện tại hoặc lịch sử |
+| `/taixiu thongtin [session]` | Alias tiếng Việt của info |
+| `/taixiu rules` hoặc `/taixiu luatchoi` | Xem luật |
+| `/taixiu toggle` | Bật/tắt boss bar/thông báo |
+
+### Quản trị — `taixiu.admin`
+
+| Lệnh | Mô tả |
+|---|---|
+| `/taixiuadmin reload` | Reload cấu hình và integration có thể reload |
+| `/taixiuadmin changestate` | Pause/resume khi health-lock cho phép |
+| `/taixiuadmin settime <seconds>` | Đổi thời gian còn lại |
+| `/taixiuadmin setcurrency <VAULT|PLAYERPOINTS>` | Đổi currency trước khi có bet |
+| `/taixiuadmin setresult <d1> <d2> <d3>` | Ép kết quả phiên |
+| `/taixiuadmin health` hoặc `suckhoe` | Xem health state |
+| `/taixiuadmin health acknowledge` | Xác nhận và xóa health-lock |
+| `/taixiuadmin suckhoe xacnhan` | Alias tiếng Việt của acknowledge |
+| `/taixiuadmin transaction list [page] [status]` | Danh sách transaction cần xử lý |
+| `/taixiuadmin giaodich danhsach [page] [status]` | Alias tiếng Việt của list |
+| `/taixiuadmin transaction <id> <action> confirm [reason]` | Reconcile có xác nhận và audit reason |
+| `/taixiuadmin giaodich <id> <hanh-dong> xacnhan [ly-do]` | Cú pháp alias tiếng Việt |
+
+Action aliases:
+
+| English | Tiếng Việt không dấu |
+|---|---|
+| `complete` | `hoantat` |
+| `fail` | `thatbai` |
+| `refund` | `hoantien` |
+| `retry` | `thulai` |
+| `confirm` / `acknowledge` | `xacnhan` |
+
+Permission bổ sung: `taixiu.tax.bypass` bỏ qua thuế payout.
+
+## Placeholders
+
+| Placeholder | Giá trị |
+|---|---|
+| `%taixiu_phien%` | ID phiên hiện tại |
+| `%taixiu_timeleft%` | Thời gian còn lại |
+| `%taixiu_result_phien_<session>%` | Kết quả phiên |
+| `%taixiu_resultformat_phien_<session>%` | Kết quả đã format theo locale |
+| `%taixiu_taiplayers_phien_<session>%` | Danh sách người cược Tài |
+| `%taixiu_xiuplayers_phien_<session>%` | Danh sách người cược Xỉu |
+| `%taixiu_taiplayers_bet_phien_<session>%` | Tổng cược Tài |
+| `%taixiu_xiuplayers_bet_phien_<session>%` | Tổng cược Xỉu |
+| `%taixiu_totalbet_phien_<session>%` | Tổng cược hai cửa |
+
+Dùng `current` thay cho `<session>` để đọc phiên hiện tại. Historical placeholder được load bất đồng bộ; request lạnh đầu tiên có thể trả giá trị loading cấu hình tại `placeholder-history-loading-value`.
+
+## Cấu hình đáng chú ý
+
+```yaml
+locale: vi
+
+database:
+  file: taixiu.db
+  history-cache-size: 256
+  journal-retention-days: 90
+  shutdown-transaction-timeout-seconds: 10
+  retention:
+    mode: ALL
+    days: 90
+    max-sessions: 10000
+
+currency-settings:
+  default: VAULT
+
+discord-webhook-settings:
+  queue-capacity: 256
+  webhookURL: ""
+```
+
+Thay `database.file` cần restart. Các cấu hình retention, Discord và integration có thể reload bằng command admin.
+
+## Kiểm thử và trạng thái hỗ trợ
+
+CI chạy build, unit tests và JaCoCo quality gates. Test hiện bao phủ dice rules, payout calculation và SQLite migration/journal/retention.
+
+Các lỗi thread của economy provider chỉ xuất hiện trên server thật. Trước release/merge, hãy hoàn thành [Paper/Folia runtime test checklist](docs/runtime-test-checklist.md), đặc biệt các trường hợp:
+
+- Người chơi thoát đúng lúc debit/payout.
+- Shutdown khi entity operation đang chờ.
+- Provider đổi tiền rồi mới ném exception.
+- SQLite không ghi được.
+- Một payout thành công và payout kế tiếp thất bại.
+- Restart với journal `PREPARED`, `APPLIED` và `UNKNOWN`.
+
+## Đóng góp
+
+1. Fork repository và tạo branch riêng.
+2. Thực hiện thay đổi nhỏ, có phạm vi rõ ràng.
+3. Chạy `./gradlew clean build`.
+4. Với thay đổi economy/scheduler, đính kèm kết quả runtime checklist.
+5. Mở draft pull request vào fork này.
+
+Dependency và GitHub Actions được Dependabot kiểm tra hàng tuần.
+
+## Credits
+
+- Tác giả và dự án gốc: [Thuong Nguyen / Cortez Romeo](https://github.com/CortezRomeo).
+- Fork 3.0 và maintenance: [Alexteens24](https://github.com/Alexteens24).
+- [ConfigUpdater](https://github.com/tchristofferson/Config-Updater).
+- [SQLite JDBC](https://github.com/xerial/sqlite-jdbc).
+- [JSON-java](https://github.com/stleary/JSON-java).
+- [JetBrains Annotations](https://github.com/JetBrains/java-annotations).
+
+## License
+
+Phân phối theo [GNU General Public License v3.0](LICENSE). Fork này giữ nguyên credit và lịch sử bản quyền của dự án gốc.
