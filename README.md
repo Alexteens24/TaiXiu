@@ -159,8 +159,8 @@ Use `refund`, `retry`, `complete`, or `fail` only after checking the provider le
 | Command | Description |
 |---|---|
 | `/taixiu` | Open the main menu |
-| `/taixiu bet <tai|xiu> <amount>` | Place a bet |
-| `/taixiu cuoc <tai|xiu> <amount>` | Vietnamese alias for bet |
+| `/taixiu bet <tai\|xiu> <amount>` | Place a bet |
+| `/taixiu cuoc <tai\|xiu> <amount>` | Vietnamese alias for bet |
 | `/taixiu info [session]` | View the current or a historical session |
 | `/taixiu thongtin [session]` | Vietnamese alias for info |
 | `/taixiu rules` or `/taixiu luatchoi` | View the rules |
@@ -173,7 +173,7 @@ Use `refund`, `retry`, `complete`, or `fail` only after checking the provider le
 | `/taixiuadmin reload` | Reload configuration and reloadable integrations |
 | `/taixiuadmin changestate` | Pause/resume when the health lock allows it |
 | `/taixiuadmin settime <seconds>` | Change the remaining time |
-| `/taixiuadmin setcurrency <VAULT|PLAYERPOINTS>` | Change currency before any bet exists |
+| `/taixiuadmin setcurrency <VAULT\|PLAYERPOINTS>` | Change currency before any bet exists |
 | `/taixiuadmin setresult <d1> <d2> <d3>` | Force a session result |
 | `/taixiuadmin health` or `suckhoe` | Inspect health state |
 | `/taixiuadmin health acknowledge` | Explicitly clear the health lock |
