@@ -157,6 +157,73 @@ class SQLiteSessionStorageTest {
         }
     }
 
+    @Test
+    void rolloverOfferIsConsumedAtomicallyIntoNextSession() throws Exception {
+        File database = new File(directory, "rollover.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database)) {
+            SessionData source = activeSession(30, "Alex", playerId, 500);
+            source.registerPlayer("Alex", new BetMetadata(playerId, 5, true, true,
+                    BetMetadata.FundingSource.WALLET, 0));
+            source.setResult(TaiXiuResult.TAI);
+            RolloverOffer offer = new RolloverOffer("offer", 30, 31, playerId, "Alex",
+                    CurrencyTyppe.VAULT, 950, 1, 0, "PENDING_TARGET", null);
+            storage.prepareSettlement(source, List.of(), List.of(offer),
+                    new InsuranceSettings(false, 3, 20, 1_000));
+            storage.saveData(31, new SessionData(31, 0, 0, 0, TaiXiuResult.NONE,
+                    new HashMap<>(), new HashMap<>(), CurrencyTyppe.VAULT));
+            storage.activateRolloverOffers(31, System.currentTimeMillis() + 60_000);
+
+            RolloverOffer available = storage.findAvailableRollover(playerId, 31).orElseThrow();
+            BetMetadata metadata = new BetMetadata(playerId, 4, true, false,
+                    BetMetadata.FundingSource.ESCROW, 1);
+            assertTrue(storage.consumeRollover(available.id(), 31, TaiXiuResult.XIU, metadata).isPresent());
+            assertTrue(storage.findAvailableRollover(playerId, 31).isEmpty());
+            SessionData target = (SessionData) storage.getData(31);
+            assertEquals(950, target.getXiuPlayerSnapshot().get("Alex"));
+            assertEquals(BetMetadata.FundingSource.ESCROW, target.getBetMetadata("Alex").fundingSource());
+        }
+    }
+
+    @Test
+    void expiredRolloverCreatesOneJournaledCashout() throws Exception {
+        File database = new File(directory, "cashout.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database)) {
+            SessionData source = activeSession(40, "Alex", playerId, 500);
+            source.setResult(TaiXiuResult.TAI);
+            storage.prepareSettlement(source, List.of(), List.of(new RolloverOffer("offer", 40, 41,
+                    playerId, "Alex", CurrencyTyppe.VAULT, 1_000, 1, 0, "PENDING_TARGET", null)),
+                    new InsuranceSettings(false, 3, 20, 1_000));
+            storage.activateRolloverOffers(41, 1);
+            List<JournalEntry> cashouts = storage.expireRolloverOffers(41, 2);
+            assertEquals(1, cashouts.size());
+            assertEquals("ROLLOVER_CASHOUT", cashouts.getFirst().context());
+            assertTrue(storage.expireRolloverOffers(41, 3).isEmpty());
+        }
+    }
+
+    @Test
+    void thirdEligibleWalletLossReceivesCappedInsurance() throws Exception {
+        File database = new File(directory, "insurance.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database)) {
+            InsuranceSettings settings = new InsuranceSettings(true, 3, 20, 150);
+            for (int i = 1; i <= 3; i++) {
+                SessionData session = activeSession(50 + i, "Alex", playerId, 1_000);
+                session.registerPlayer("Alex", new BetMetadata(playerId, 0, false, true,
+                        BetMetadata.FundingSource.WALLET, 0));
+                session.setResult(TaiXiuResult.XIU);
+                SettlementPreparation prepared = storage.prepareSettlement(session, List.of(), List.of(), settings);
+                assertEquals(i == 3 ? 1 : 0, prepared.insurancePayouts().size());
+                if (i == 3) {
+                    assertEquals(150, prepared.insurancePayouts().getFirst().amount());
+                    assertEquals("INSURANCE_REFUND", prepared.insurancePayouts().getFirst().context());
+                }
+            }
+        }
+    }
+
     private SQLiteSessionStorage storage(File database) throws Exception {
         return new SQLiteSessionStorage(database, directory, CurrencyTyppe.VAULT,
                 "ALL", 90, 10_000, false);

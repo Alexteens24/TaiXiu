@@ -12,7 +12,7 @@
 #
 #  Discord: https://discord.gg/NWbTVddmBM
 
-config-version: 3
+config-version: 4
 
 # For debugging purposes
 # Do not enable unless necessary
@@ -73,6 +73,20 @@ bet-settings:
   tax: 0            # Additional tax; 0 = disabled
   disable-while-remaining: 15  # Disable betting when time left is under this threshold
   disable-special: false       # If true, disables special cases like sum = 3 or 18 (where both sides lose)
+
+# Winners may hold their complete payout in SQLite and use it as the next session's stake.
+rollover:
+  enabled: false
+  max-consecutive: 3
+  # Maximum resulting payout is this value multiplied by bet-settings.max-bet.
+  max-payout-multiplier: 10
+
+# Transparent loss-streak insurance. Only wallet-funded bets with the claim permission qualify.
+insurance:
+  enabled: false
+  losses-required: 3
+  refund-percent: 20
+  max-refund-per-24-hours: 1000000
 
 # Geyser API / Floodgate API
 # Used to show forms to Bedrock Edition players

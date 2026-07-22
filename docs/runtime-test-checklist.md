@@ -8,6 +8,8 @@ Record the exact server build, Java version, Vault bridge, economy provider, pro
 
 - [ ] Paper 1.21.4, Java 21, Vault, and EssentialsX Economy or XConomy.
 - [ ] Folia 1.21.4, Java 21, VaultUnlocked, and an economy provider that explicitly supports Folia.
+- [ ] Paper 26.1.2, Java 25, Vault, and EssentialsX Economy or XConomy.
+- [ ] Folia 26.2, Java 25, VaultUnlocked, and a provider that explicitly supports that Folia build.
 - [ ] Repeat the happy-path tests with PlayerPoints when that integration is enabled.
 
 The `folia-supported: true` manifest flag allows the plugin to load for this validation; it must not be treated as release sign-off until the Folia row and failure scenarios below pass.
@@ -20,6 +22,10 @@ The `folia-supported: true` manifest flag allows the plugin to load for this val
 - [ ] Query active and historical placeholders and open historical session information.
 - [ ] Reload configuration and verify Vault, PlayerPoints, Discord, and Floodgate state refresh correctly.
 - [ ] Stop normally and verify a clean WAL checkpoint and successful restart.
+- [ ] Enable rollover, win, then exercise Tai, Xiu, manual cashout, cutoff cashout, max-depth cashout, and max-payout cashout.
+- [ ] Restart with offers in `PENDING_TARGET`, `AVAILABLE`, `CONSUMED`, and `CASHOUT_PENDING` and verify no duplicate credit.
+- [ ] Enable insurance and verify the third eligible wallet loss (including a `3/18` result) refunds 20%, respects the 24-hour cap, and excludes escrow bets.
+- [ ] Verify max-bet and decimal tax-discount permissions use the highest valid enabled node.
 
 ## Thread and lifecycle failures
 

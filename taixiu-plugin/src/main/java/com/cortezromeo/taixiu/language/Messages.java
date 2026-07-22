@@ -43,6 +43,11 @@ public class Messages {
     public static String SESSION_PLAYER_WIN;
     public static String SESSION_PLAYER_WIN_WITH_TAX;
     public static String SESSION_PLAYER_LOSE;
+    public static String ROLLOVER_OFFER;
+    public static String ROLLOVER_ACCEPTED;
+    public static String ROLLOVER_CASHED_OUT;
+    public static String ROLLOVER_NOT_AVAILABLE;
+    public static String INSURANCE_PAID;
     public static String ALREADY_ON_LAST_PAGE;
     public static List<String> COMMAND_TAIXIU = new ArrayList<>();
     public static List<String> COMMAND_LUATCHOI = new ArrayList<>();
@@ -110,6 +115,11 @@ public class Messages {
         SESSION_PLAYER_WIN = fileConfiguration.getString("messages.session-player-win");
         SESSION_PLAYER_WIN_WITH_TAX = fileConfiguration.getString("messages.session-player-win-with-tax");
         SESSION_PLAYER_LOSE = fileConfiguration.getString("messages.session-player-lose");
+        ROLLOVER_OFFER = fileConfiguration.getString("messages.rollover.offer");
+        ROLLOVER_ACCEPTED = fileConfiguration.getString("messages.rollover.accepted");
+        ROLLOVER_CASHED_OUT = fileConfiguration.getString("messages.rollover.cashed-out");
+        ROLLOVER_NOT_AVAILABLE = fileConfiguration.getString("messages.rollover.not-available");
+        INSURANCE_PAID = fileConfiguration.getString("messages.insurance-paid");
         ALREADY_ON_LAST_PAGE = fileConfiguration.getString("messages.already-on-last-page");
         COMMAND_TAIXIU = fileConfiguration.getStringList("messages.command.taixiu.message");
         COMMAND_LUATCHOI = fileConfiguration.getStringList("messages.command.luatchoi.message");

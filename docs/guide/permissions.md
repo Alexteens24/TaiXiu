@@ -10,6 +10,18 @@
   <PermissionRow permission="taixiu.tax.bypass" default-value="op">
     Receive winnings without the configured payout tax.
   </PermissionRow>
+  <PermissionRow permission="taixiu.maxbet.&lt;amount&gt;" default-value="not set">
+    Override the configured maximum bet; the highest enabled numeric node wins.
+  </PermissionRow>
+  <PermissionRow permission="taixiu.tax.discount.&lt;points&gt;" default-value="not set">
+    Subtract percentage points from payout tax; decimals are accepted and bypass takes precedence.
+  </PermissionRow>
+  <PermissionRow permission="taixiu.rollover" default-value="true">
+    Use a winning escrow as the next session's complete stake.
+  </PermissionRow>
+  <PermissionRow permission="taixiu.insurance.claim" default-value="false">
+    Qualify wallet-funded bets for configured loss-streak insurance.
+  </PermissionRow>
 </ReferenceTable>
 
 ::: tip Least privilege

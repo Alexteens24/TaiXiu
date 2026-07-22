@@ -5,6 +5,8 @@ plugins {
 group = "com.cortezromeo.taixiu"
 version = "3.0.0"
 
+val testJavaVersion = providers.gradleProperty("testJavaVersion").getOrElse("21").toInt()
+
 subprojects {
     apply(plugin = "java-library")
 
@@ -28,6 +30,9 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        javaLauncher = project.extensions.getByType<JavaToolchainService>().launcherFor {
+            languageVersion = JavaLanguageVersion.of(testJavaVersion)
+        }
     }
 
     dependencyLocking {

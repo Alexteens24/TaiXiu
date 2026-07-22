@@ -63,6 +63,41 @@ public class SessionDataStorage {
         });
     }
 
+    public static CompletableFuture<SettlementPreparation> prepareSettlementAsync(
+            ISession data, List<JournalEntry> payouts, List<RolloverOffer> offers, InsuranceSettings insuranceSettings) {
+        return submit(() -> {
+            SettlementPreparation result = ((SQLiteSessionStorage) STORAGE)
+                    .prepareSettlement(data, payouts, offers, insuranceSettings);
+            com.cortezromeo.taixiu.manager.DatabaseManager.clearHistoryCache();
+            return result;
+        });
+    }
+
+    public static CompletableFuture<Void> activateRolloverOffersAsync(long targetSessionId, long expiresAt) {
+        return submit(() -> ((SQLiteSessionStorage) STORAGE).activateRolloverOffers(targetSessionId, expiresAt));
+    }
+
+    public static CompletableFuture<Optional<RolloverOffer>> findAvailableRolloverAsync(
+            java.util.UUID playerId, long targetSessionId) {
+        return submit(() -> ((SQLiteSessionStorage) STORAGE).findAvailableRollover(playerId, targetSessionId));
+    }
+
+    public static CompletableFuture<Optional<RolloverOffer>> consumeRolloverAsync(
+            String offerId, long targetSessionId, com.cortezromeo.taixiu.api.TaiXiuResult side,
+            BetMetadata metadata) {
+        return submit(() -> ((SQLiteSessionStorage) STORAGE)
+                .consumeRollover(offerId, targetSessionId, side, metadata));
+    }
+
+    public static CompletableFuture<Optional<JournalEntry>> prepareRolloverCashoutAsync(
+            java.util.UUID playerId, long targetSessionId) {
+        return submit(() -> ((SQLiteSessionStorage) STORAGE).prepareRolloverCashout(playerId, targetSessionId));
+    }
+
+    public static CompletableFuture<List<JournalEntry>> expireRolloverOffersAsync(long targetSessionId, long now) {
+        return submit(() -> ((SQLiteSessionStorage) STORAGE).expireRolloverOffers(targetSessionId, now));
+    }
+
     public static CompletableFuture<Void> markJournalAsync(String id, String status) {
         return submit(() -> {
             ((SQLiteSessionStorage) STORAGE).markJournal(id, status);
@@ -158,7 +193,12 @@ public class SessionDataStorage {
             if (closing) return;
             closing = true;
             flush = CompletableFuture.runAsync(() -> {
-                for (ISession snapshot : finalSnapshots) STORAGE.saveData(snapshot.getSession(), snapshot);
+                for (ISession snapshot : finalSnapshots) {
+                    // Session mutations are write-through. Never let a stale shutdown snapshot overwrite a
+                    // rollover bet that was atomically consumed on the database executor just before shutdown.
+                    if (STORAGE instanceof SQLiteSessionStorage sqlite && sqlite.exists(snapshot.getSession())) continue;
+                    STORAGE.saveData(snapshot.getSession(), snapshot);
+                }
             }, databaseExecutor);
         }
         try {

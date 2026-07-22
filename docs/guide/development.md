@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- JDK 21.
+- JDK 21 for the bytecode target; JDK 25 is also exercised in CI for 26.x servers.
 - Git.
 - Node.js 22 only when editing this documentation website.
 

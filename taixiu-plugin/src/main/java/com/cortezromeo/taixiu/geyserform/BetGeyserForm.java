@@ -6,6 +6,7 @@ import com.cortezromeo.taixiu.file.GeyserFormFile;
 import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.BetPermissionPolicy;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.CustomForm;
@@ -32,11 +33,13 @@ public class BetGeyserForm {
         secondOrderOption2 = geyserFormFile.getString(stringPath + "order.2.dropdown.options.xiu");
         thirdOrder = geyserFormFile.getString(stringPath + "order.3.input.name");
         thirdOrderPlaceholder = geyserFormFile.getString(stringPath + "order.3.input.placeholder");
-        thirdOrderPlaceholder = thirdOrderPlaceholder.replace("%minBet%", TaiXiu.plugin.getConfig().getString("bet-settings.min-bet"));
-        thirdOrderPlaceholder = thirdOrderPlaceholder.replace("%maxBet%", TaiXiu.plugin.getConfig().getString("bet-settings.max-bet"));
     }
 
     public static CustomForm getForm(Player player) {
+        String amountPlaceholder = thirdOrderPlaceholder
+                .replace("%minBet%", TaiXiu.plugin.getConfig().getString("bet-settings.min-bet"))
+                .replace("%maxBet%", String.valueOf(BetPermissionPolicy.effectiveMaxBet(player,
+                        TaiXiu.plugin.getConfig().getLong("bet-settings.max-bet"))));
         String firstOrder = geyserFormFile.getString("form.bet.order.1.label");
         firstOrder = firstOrder.replace("%session%", String.valueOf(TaiXiuManager.getTaiXiuTask().getSession().getSession()));
         firstOrder = firstOrder.replace("%secondsLeft%", String.valueOf(
@@ -45,7 +48,7 @@ public class BetGeyserForm {
         return CustomForm.builder().title(TaiXiu.nms.addColor(title))
                 .label(TaiXiu.nms.addColor(firstOrder))
                 .dropdown(secondOrder, TaiXiu.nms.addColor(secondOrderOption1), TaiXiu.nms.addColor(secondOrderOption2))
-                .input(TaiXiu.nms.addColor(thirdOrder), TaiXiu.nms.addColor(thirdOrderPlaceholder))
+                .input(TaiXiu.nms.addColor(thirdOrder), TaiXiu.nms.addColor(amountPlaceholder))
                 .validResultHandler((customForm, customFormResponse) -> {
 
                     if (customFormResponse.asInput(2) == null)

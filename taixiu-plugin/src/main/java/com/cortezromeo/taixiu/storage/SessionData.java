@@ -20,8 +20,7 @@ public class SessionData implements ISession {
     private HashMap<String, Long> xiuPlayers;
     private TaiXiuResult result;
     private CurrencyTyppe currencyType;
-    private final HashMap<String, UUID> playerIds = new HashMap<>();
-    private final HashMap<String, Boolean> taxBypass = new HashMap<>();
+    private final HashMap<String, BetMetadata> betMetadata = new HashMap<>();
 
     public SessionData(long session, int dice1, int dice2, int dice3, TaiXiuResult result, HashMap<String, Long> taiPlayers, HashMap<String, Long> xiuPlayers, CurrencyTyppe currencyType) {
         this.session = session;
@@ -44,18 +43,29 @@ public class SessionData implements ISession {
 
     private synchronized SessionData copy() {
         SessionData copy = new SessionData(session, dice1, dice2, dice3, result, taiPlayers, xiuPlayers, currencyType);
-        copy.playerIds.putAll(playerIds);
-        copy.taxBypass.putAll(taxBypass);
+        copy.betMetadata.putAll(betMetadata);
         return copy;
     }
 
     public synchronized void registerPlayer(String name, UUID playerId, boolean bypassTax) {
-        playerIds.put(name, playerId);
-        taxBypass.put(name, bypassTax);
+        betMetadata.put(name, BetMetadata.legacy(playerId, bypassTax));
     }
 
-    public synchronized UUID getPlayerId(String name) { return playerIds.get(name); }
-    public synchronized boolean hasTaxBypass(String name) { return taxBypass.getOrDefault(name, false); }
+    public synchronized void registerPlayer(String name, BetMetadata metadata) {
+        betMetadata.put(name, metadata);
+    }
+
+    public synchronized UUID getPlayerId(String name) {
+        BetMetadata metadata = betMetadata.get(name);
+        return metadata == null ? null : metadata.playerId();
+    }
+
+    public synchronized BetMetadata getBetMetadata(String name) { return betMetadata.get(name); }
+
+    public synchronized boolean hasTaxBypass(String name) {
+        BetMetadata metadata = betMetadata.get(name);
+        return metadata != null && metadata.effectiveTax() == 0;
+    }
 
     @Override
     public synchronized long getSession() {
@@ -179,8 +189,7 @@ public class SessionData implements ISession {
 
     private void cleanupPlayerMetadata(String playerName) {
         if (!taiPlayers.containsKey(playerName) && !xiuPlayers.containsKey(playerName)) {
-            playerIds.remove(playerName);
-            taxBypass.remove(playerName);
+            betMetadata.remove(playerName);
         }
     }
 }

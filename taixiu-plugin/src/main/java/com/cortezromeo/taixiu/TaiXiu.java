@@ -243,6 +243,26 @@ public final class TaiXiu extends JavaPlugin {
             getLogger().severe("bet-settings.tax must be between 0 and 100");
             valid = false;
         }
+        long rolloverMultiplier = getConfig().getLong("rollover.max-payout-multiplier", 10);
+        if (getConfig().getInt("rollover.max-consecutive", 3) < 1 || rolloverMultiplier < 1) {
+            getLogger().severe("rollover limits must be at least 1");
+            valid = false;
+        } else {
+            try {
+                Math.multiplyExact(maxBet, rolloverMultiplier);
+            } catch (ArithmeticException exception) {
+                getLogger().severe("rollover payout limit exceeds the supported whole-number range");
+                valid = false;
+            }
+        }
+        int insuranceLosses = getConfig().getInt("insurance.losses-required", 3);
+        double insuranceRefund = getConfig().getDouble("insurance.refund-percent", 20);
+        long insuranceCap = getConfig().getLong("insurance.max-refund-per-24-hours", 1_000_000);
+        if (insuranceLosses < 1 || !Double.isFinite(insuranceRefund) || insuranceRefund < 0
+                || insuranceRefund > 100 || insuranceCap < 1) {
+            getLogger().severe("insurance requires losses>=1, refund-percent 0..100, and a positive 24h cap");
+            valid = false;
+        }
         try {
             new DecimalFormat(getConfig().getString("format-money", "#,###"));
         } catch (IllegalArgumentException exception) {

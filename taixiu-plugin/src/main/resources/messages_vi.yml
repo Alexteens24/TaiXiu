@@ -56,6 +56,12 @@ messages:
   session-player-win: '%prefix%&fBạn đã đặt vào %result%&f và thắng %currencySymbol%%money%&f.'
   session-player-win-with-tax: '%prefix%&fBạn đã đặt vào %result%&f và thắng %currencySymbol%%money%&f. &c&l(TAX: %tax%%)'
   session-player-lose: '%prefix%&fBạn đã đặt vào %result%&f và thua %currencySymbol%%money%&f.'
+  rollover:
+    offer: '%prefix%&e%currencySymbol%%money% đang được giữ an toàn cho phiên #%session%. Dùng /taixiu nhoi tai|xiu|nhantien trước khi khóa cược.'
+    accepted: '%prefix%&aĐã nhồi %currencySymbol%%money% vào phiên kế tiếp.'
+    cashed-out: '%prefix%&aĐã trả %currencySymbol%%money% từ escrow vào ví.'
+    not-available: '%prefix%&cBạn không có khoản nhồi cược khả dụng.'
+  insurance-paid: '%prefix%&aBảo hiểm chuỗi thua đã hoàn %currencySymbol%%money% %currencyName%.'
   command:
     taixiu:
       message:
@@ -68,6 +74,7 @@ messages:
         - '&#03c6fc/taixiu cuoc &6<xiu(1)/tai(2)> <số tiền&6> &7- &fĐặt cược'
         - '&#03c6fc/taixiu thongtin &7- &fXem thông tin phiên hiện tại'
         - '&#03c6fc/taixiu thongtin &e(số phiên) &7- &fXem thông tin phiên số tùy chọn'
+        - '&#03c6fc/taixiu nhoi &6<tai/xiu/nhantien> &7- &fNhồi hoặc nhận khoản escrow'
         - ' '
         - ' &6<>&7: Bắt buộc phải nhập &7| &e()&7: Tùy chỉnh'
     luatchoi:
@@ -80,6 +87,7 @@ messages:
         - '&fKhi tổng các nút là &e3&f hoặc &e18&f thì nhà cái ăn (Tài, xỉu đều thua)&f.'
         - '&fSố %currencyName%&r cược tối thiểu là %currencySymbol%%minBet%&f.'
         - '&fSố %currencyName%&r cược tối đa là %currencySymbol%%maxBet%&f.'
+        - '&fThuế payout hiệu lực của bạn: &e%tax%%&f.'
         - '&fKhi thắng bạn sẽ nhận được gấp đôi số %currencyName%&f đã đặt (1 ăn 1).'
         - '&aGood luck!'
     taixiuadmin:

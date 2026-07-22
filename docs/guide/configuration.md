@@ -6,7 +6,7 @@ TaiXiu creates `plugins/TaiXiu/config.yml` on first startup. Most gameplay and i
 
 | Key | Default | Description |
 |---|---:|---|
-| `config-version` | `3` | Internal configuration schema version. Do not edit manually. |
+| `config-version` | `4` | Internal configuration schema version. Do not edit manually. |
 | `debug` | `false` | Enables verbose diagnostic logging. Use only while investigating a problem. |
 | `locale` | `en` | Message pack: `en` or `vi`. This does not affect session IDs or stored balances. |
 | `placeholder-history-loading-value` | `...` | First value returned while an uncached historical placeholder loads asynchronously. |
@@ -51,6 +51,17 @@ bet-settings:
   tax: 0
   disable-while-remaining: 15
   disable-special: false
+
+rollover:
+  enabled: false
+  max-consecutive: 3
+  max-payout-multiplier: 10
+
+insurance:
+  enabled: false
+  losses-required: 3
+  refund-percent: 20
+  max-refund-per-24-hours: 1000000
 ```
 
 - `time-per-session` is the countdown duration in seconds.
@@ -58,6 +69,8 @@ bet-settings:
 - `tax` is deducted from winning profit; `0` disables it.
 - `disable-while-remaining` closes betting near the end of a session.
 - `disable-special` prevents sums `3` and `18` from producing a both-sides-lose result.
+- Rollover holds an eligible winner's complete after-tax payout in SQLite until the next betting cutoff. It is disabled by default, has no streak multiplier, and automatically cashes out when a limit is reached.
+- Insurance counts consecutive eligible wallet-funded losses, including special results. The default third loss refunds 20% of that bet, bounded by a rolling 24-hour cap; escrow-funded bets never qualify.
 
 ## Currency
 
