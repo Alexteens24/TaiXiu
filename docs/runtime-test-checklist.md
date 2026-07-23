@@ -26,6 +26,11 @@ The `folia-supported: true` manifest flag allows the plugin to load for this val
 - [ ] Restart with offers in `PENDING_TARGET`, `AVAILABLE`, `CONSUMED`, and `CASHOUT_PENDING` and verify no duplicate credit.
 - [ ] Enable insurance and verify the third eligible wallet loss (including a `3/18` result) refunds 20%, respects the 24-hour cap, and excludes escrow bets.
 - [ ] Verify max-bet and decimal tax-discount permissions use the highest valid enabled node.
+- [ ] In `LEGACY` mode, verify chat, console, boss bar, inventory, currency text, and Geyser forms render `&` and `&#RRGGBB` formats.
+- [ ] Convert the UI configuration, switch to `MINIMESSAGE`, reload, and verify the same surfaces render colors, gradients, and decorations.
+- [ ] Verify MiniMessage click/hover events work in Java chat and rollover prompt buttons remain clickable.
+- [ ] Verify `%taixiu_resultformat_*%` remains legacy-compatible and Discord currency names contain no formatting tags.
+- [ ] Introduce an invalid MiniMessage tag and verify the plugin warns without breaking message delivery or gameplay.
 
 ## Thread and lifecycle failures
 
@@ -37,6 +42,7 @@ The `folia-supported: true` manifest flag allows the plugin to load for this val
 - [ ] Force the shutdown timeout and verify every still-running journal-backed operation is persisted as `UNKNOWN` before SQLite closes.
 - [ ] Verify no late callback throws `RejectedExecutionException` or accesses a closed SQLite connection.
 - [ ] On Folia, confirm there are no synchronous-event or wrong-region errors such as `BalanceChangeEvent may only be triggered synchronously`.
+- [ ] On Folia, reload between `LEGACY` and `MINIMESSAGE` while players are online and verify delivery remains entity-scheduled.
 
 ## Provider and persistence failures
 

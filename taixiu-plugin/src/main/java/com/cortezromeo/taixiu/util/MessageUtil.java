@@ -5,6 +5,7 @@ import com.cortezromeo.taixiu.api.CurrencyTyppe;
 import com.cortezromeo.taixiu.api.TaiXiuResult;
 import com.cortezromeo.taixiu.language.Messages;
 import me.clip.placeholderapi.PlaceholderAPI;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -54,23 +55,54 @@ public class MessageUtil {
     }
 
     public static void log(String message) {
-        Bukkit.getConsoleSender().sendMessage(TaiXiu.nms.addColor(message));
+        Bukkit.getConsoleSender().sendMessage(TextFormatter.legacyComponent(message));
     }
 
     public static void sendMessage(CommandSender sender, String message) {
-        message = message.replace("%prefix%" , Messages.PREFIX);
-        sender.sendMessage(TaiXiu.nms.addColor(message));
+        if (sender == null || message == null || message.isEmpty()) return;
+        String resolved = message.replace("%prefix%", Messages.PREFIX);
+        if (sender instanceof Player player) {
+            sendResolvedPlayerMessage(player, resolved, false);
+            return;
+        }
+        sender.sendMessage(TextFormatter.component(resolved));
     }
 
     public static void sendMessage(Player player, String message) {
         if (player == null || message == null || message.isEmpty())
             return;
-        String resolved = message.replace("%prefix%" , Messages.PREFIX);
+        sendResolvedPlayerMessage(player, message.replace("%prefix%", Messages.PREFIX), false);
+    }
+
+    public static void sendLegacyMessage(CommandSender sender, String message) {
+        if (sender == null || message == null || message.isEmpty()) return;
+        if (sender instanceof Player player) {
+            sendResolvedPlayerMessage(player, message, true);
+            return;
+        }
+        sender.sendMessage(TextFormatter.legacyComponent(message));
+    }
+
+    public static void sendComponent(CommandSender sender, Component component) {
+        if (sender == null || component == null) return;
+        if (sender instanceof Player player) {
+            Runnable delivery = () -> player.sendMessage(component);
+            if (Bukkit.isOwnedByCurrentRegion(player)) delivery.run();
+            else TaiXiu.scheduler.runEntity(player, delivery);
+            return;
+        }
+        sender.sendMessage(component);
+    }
+
+    private static void sendResolvedPlayerMessage(Player player, String message, boolean legacy) {
         Runnable delivery = () -> {
-            if (!TaiXiu.support.isPlaceholderAPISupported())
-                player.sendMessage(TaiXiu.nms.addColor(resolved));
-            else
-                player.sendMessage(TaiXiu.nms.addColor(PlaceholderAPI.setPlaceholders(player, resolved)));
+            String resolved = TaiXiu.support.isPlaceholderAPISupported()
+                    ? PlaceholderAPI.setPlaceholders(player, message)
+                    : message;
+            Component component = legacy
+                    ? TextFormatter.legacyComponent(resolved)
+                    : TextFormatter.component(resolved);
+            player.sendMessage(component);
         };
         if (Bukkit.isOwnedByCurrentRegion(player)) delivery.run();
         else TaiXiu.scheduler.runEntity(player, delivery);

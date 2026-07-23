@@ -13,7 +13,8 @@
 #  Discord: https://discord.gg/NWbTVddmBM
 #
 #  Note:
-#  * Hex color supported
+#  * Formatting follows config.yml text-format (LEGACY or MINIMESSAGE)
+#  * This bundled file intentionally uses Legacy color codes
 #  * There are 3 main types:
 #    + material: value is set to the MATERIAL of the block
 #      > For versions before 1.13, you can use numeric IDs in 'value:' and 'data:'

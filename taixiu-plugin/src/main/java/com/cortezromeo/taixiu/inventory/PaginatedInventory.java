@@ -6,10 +6,8 @@ import com.cortezromeo.taixiu.util.ItemUtil;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
+import java.util.Map;
 
 public abstract class PaginatedInventory extends TaiXiuInventoryBase {
 
@@ -47,7 +45,8 @@ public abstract class PaginatedInventory extends TaiXiuInventoryBase {
                 invFileConfig.getString("items.prevPage.value"),
                 (short) invFileConfig.getInt("items.prevPage.data"),
                 invFileConfig.getString("items.prevPage.name"),
-                invFileConfig.getStringList("items.prevPage.lore")), "prevPage");
+                invFileConfig.getStringList("items.prevPage.lore"),
+                pageReplacements()), "prevPage");
         int prevPageItemSlot = invFileConfig.getInt("items.prevPage.slot");
         if (prevPageItemSlot < 0)
             prevPageItemSlot = 0;
@@ -59,7 +58,8 @@ public abstract class PaginatedInventory extends TaiXiuInventoryBase {
                 invFileConfig.getString("items.nextPage.value"),
                 (short) invFileConfig.getInt("items.nextPage.data"),
                 invFileConfig.getString("items.nextPage.name"),
-                invFileConfig.getStringList("items.nextPage.lore")), "nextPage");
+                invFileConfig.getStringList("items.nextPage.lore"),
+                pageReplacements()), "nextPage");
         int nextPageItemSlot = invFileConfig.getInt("items.nextPage.slot");
         if (nextPageItemSlot < 0)
             nextPageItemSlot = 0;
@@ -68,9 +68,9 @@ public abstract class PaginatedInventory extends TaiXiuInventoryBase {
         nextPageItemSlot = 45 + nextPageItemSlot;
 
         if (page > 0)
-            inventory.setItem(prevPageItemSlot, getPageItemStack(prevItem));
+            inventory.setItem(prevPageItemSlot, prevItem);
         inventory.setItem(closeItemSlot, closeItem);
-        inventory.setItem(nextPageItemSlot, getPageItemStack(nextItem));
+        inventory.setItem(nextPageItemSlot, nextItem);
 
         for (int i = 0; i < 10; i++) {
             if (inventory.getItem(i) == null) {
@@ -90,17 +90,12 @@ public abstract class PaginatedInventory extends TaiXiuInventoryBase {
         }
     }
 
-    private @NotNull ItemStack getPageItemStack(ItemStack itemStack) {
-        ItemStack modItem = new ItemStack(itemStack);
-        ItemMeta itemMeta = modItem.getItemMeta();
-
-        List<String> itemLore = itemMeta.getLore();
-        itemLore.replaceAll(string -> TaiXiu.nms.addColor(string.replace("%page%", String.valueOf(page))
-                .replace("%nextPage%", String.valueOf(page + 2))
-                .replace("%prevPage%", String.valueOf(page > 0 ? page : 0))));
-        itemMeta.setLore(itemLore);
-        modItem.setItemMeta(itemMeta);
-        return modItem;
+    private Map<String, String> pageReplacements() {
+        return Map.of(
+                "%page%", String.valueOf(page),
+                "%nextPage%", String.valueOf(page + 2),
+                "%prevPage%", String.valueOf(page > 0 ? page : 0)
+        );
     }
 
     public int getMaxItemsPerPage() {

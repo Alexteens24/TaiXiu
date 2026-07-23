@@ -24,12 +24,12 @@ import com.cortezromeo.taixiu.storage.SessionData;
 import com.cortezromeo.taixiu.storage.SessionDataStorage;
 import com.cortezromeo.taixiu.util.MessageUtil;
 import com.cortezromeo.taixiu.util.BetPermissionPolicy;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import com.cortezromeo.taixiu.geyserform.RolloverGeyserForm;
 import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -47,6 +47,7 @@ import java.util.concurrent.TimeoutException;
 
 import static com.cortezromeo.taixiu.manager.DebugManager.debug;
 import static com.cortezromeo.taixiu.util.MessageUtil.sendBroadCast;
+import static com.cortezromeo.taixiu.util.MessageUtil.sendLegacyMessage;
 import static com.cortezromeo.taixiu.util.MessageUtil.sendMessage;
 
 public class TaiXiuManager {
@@ -198,7 +199,7 @@ public class TaiXiuManager {
 
     public static void playerBet(Player player, long money, TaiXiuResult result) {
         if (!acceptingTransactions || !healthBlocks.isEmpty()) {
-            sendMessage(player, "&cTaiXiu is paused for a safety check. Please try again later.");
+            sendLegacyMessage(player, "&cTaiXiu is paused for a safety check. Please try again later.");
             return;
         }
         if (!Bukkit.isOwnedByCurrentRegion(player)) {
@@ -694,9 +695,8 @@ public class TaiXiuManager {
             RolloverGeyserForm.openForm(player);
             return;
         }
-        String colored = TaiXiu.nms.addColor(message.replace("%prefix%", Messages.PREFIX));
         boolean vietnamese = "vi".equals(Messages.locale);
-        Component prompt = LegacyComponentSerializer.legacySection().deserialize(colored)
+        Component prompt = TextFormatter.component(message.replace("%prefix%", Messages.PREFIX))
                 .append(Component.newline())
                 .append(Component.text(vietnamese ? "[Tài]" : "[High]", NamedTextColor.RED)
                         .clickEvent(ClickEvent.runCommand(vietnamese ? "/taixiu nhoi tai" : "/taixiu rollover high")))

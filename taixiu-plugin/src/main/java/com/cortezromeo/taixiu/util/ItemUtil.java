@@ -7,11 +7,17 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class ItemUtil {
 
     public static ItemStack getItem(String type, String value, short itemData, String name, List<String> lore) {
+        return getItem(type, value, itemData, name, lore, Map.of());
+    }
+
+    public static ItemStack getItem(String type, String value, short itemData, String name, List<String> lore,
+                                    Map<String, String> replacements) {
         AtomicReference<ItemStack> material = new AtomicReference<>(new ItemStack(Material.BEDROCK));
 
         if (type.equalsIgnoreCase("customhead"))
@@ -23,15 +29,21 @@ public class ItemUtil {
 
         ItemMeta materialMeta = material.get().getItemMeta();
 
-        materialMeta.setDisplayName(TaiXiu.nms.addColor(name));
+        materialMeta.setDisplayName(TextFormatter.legacy(replace(name, replacements)));
 
         List<String> newList = new ArrayList<>();
         for (String string : lore)
-            newList.add(TaiXiu.nms.addColor(string));
+            newList.add(TextFormatter.legacy(replace(string, replacements)));
         materialMeta.setLore(newList);
 
         material.get().setItemMeta(materialMeta);
         return material.get();
     }
 
+    private static String replace(String input, Map<String, String> replacements) {
+        String resolved = input == null ? "" : input;
+        for (Map.Entry<String, String> replacement : replacements.entrySet())
+            resolved = resolved.replace(replacement.getKey(), replacement.getValue());
+        return resolved;
+    }
 }

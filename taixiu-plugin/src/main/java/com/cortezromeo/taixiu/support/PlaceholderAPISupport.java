@@ -5,6 +5,7 @@ import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
 
@@ -58,7 +59,7 @@ public class PlaceholderAPISupport extends PlaceholderExpansion {
             if (session == null) {
                 return loadingValue();
             }
-            return MessageUtil.getFormatResultName(session.getResult());
+            return TextFormatter.legacy(MessageUtil.getFormatResultName(session.getResult()));
         }
 
         if (s.startsWith("taiplayers_phien_")) {

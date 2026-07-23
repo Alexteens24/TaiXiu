@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.ModalForm;
 import com.cortezromeo.taixiu.util.BetPermissionPolicy;
+import com.cortezromeo.taixiu.util.TextFormatter;
 
 public class RuleGeyserForm {
 
@@ -31,10 +32,10 @@ public class RuleGeyserForm {
                         TaiXiu.plugin.getConfig().getLong("bet-settings.max-bet"))))
                 .replace("%tax%", String.valueOf(BetPermissionPolicy.effectiveTax(player,
                         TaiXiu.plugin.getConfig().getDouble("bet-settings.tax"))));
-        return ModalForm.builder().title(TaiXiu.nms.addColor(title))
-                .content(TaiXiu.nms.addColor(playerContent))
-                .button1(TaiXiu.nms.addColor(goBackButtonName))
-                .button2(TaiXiu.nms.addColor(closeButtonName))
+        return ModalForm.builder().title(TextFormatter.legacy(title))
+                .content(TextFormatter.legacy(playerContent))
+                .button1(TextFormatter.legacy(goBackButtonName))
+                .button2(TextFormatter.legacy(closeButtonName))
                 .validResultHandler((modalForm, modalFormResponse) -> {
                     if (modalFormResponse.clickedButtonId() == 0)
                         MenuGeyserForm.openForm(player);

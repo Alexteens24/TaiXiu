@@ -7,6 +7,7 @@ import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
 import com.cortezromeo.taixiu.util.BetPermissionPolicy;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.CustomForm;
@@ -45,10 +46,11 @@ public class BetGeyserForm {
         firstOrder = firstOrder.replace("%secondsLeft%", String.valueOf(
                 (TaiXiuManager.getTaiXiuTask().getTime() - TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining"))));
 
-        return CustomForm.builder().title(TaiXiu.nms.addColor(title))
-                .label(TaiXiu.nms.addColor(firstOrder))
-                .dropdown(secondOrder, TaiXiu.nms.addColor(secondOrderOption1), TaiXiu.nms.addColor(secondOrderOption2))
-                .input(TaiXiu.nms.addColor(thirdOrder), TaiXiu.nms.addColor(amountPlaceholder))
+        return CustomForm.builder().title(TextFormatter.legacy(title))
+                .label(TextFormatter.legacy(firstOrder))
+                .dropdown(TextFormatter.legacy(secondOrder), TextFormatter.legacy(secondOrderOption1),
+                        TextFormatter.legacy(secondOrderOption2))
+                .input(TextFormatter.legacy(thirdOrder), TextFormatter.legacy(amountPlaceholder))
                 .validResultHandler((customForm, customFormResponse) -> {
 
                     if (customFormResponse.asInput(2) == null)
