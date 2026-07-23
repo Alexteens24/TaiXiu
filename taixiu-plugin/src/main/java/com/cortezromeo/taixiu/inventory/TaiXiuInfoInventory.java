@@ -8,13 +8,12 @@ import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.ItemUtil;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
@@ -62,7 +61,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
     public String getMenuName() {
         String title = TaiXiuInfoInventoryFile.get().getString("title");
         title = title.replace("%session%", String.valueOf(getSessionData().getSession()));
-        return TaiXiu.nms.addColor(title);
+        return TextFormatter.legacy(title);
     }
 
     @Override
@@ -124,12 +123,14 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
             FileConfiguration invFileConfig = TaiXiuInfoInventoryFile.get();
 
             ItemStack sessionInfoItem = TaiXiu.nms.addCustomData(
-                    getSessionInfoItemStack(ItemUtil.getItem(invFileConfig.getString("items.sessionInfo.type"),
+                    ItemUtil.getItem(invFileConfig.getString("items.sessionInfo.type"),
                             invFileConfig.getString("items.sessionInfo.value"),
                             (short) invFileConfig.getInt("items.sessionInfo.data"),
                             invFileConfig.getString("items.sessionInfo.name"),
-                            getSessionData().getResult() == TaiXiuResult.NONE ? invFileConfig.getStringList("items.sessionInfo.lore.playing") : invFileConfig.getStringList("items.sessionInfo.lore.ending")
-                    ), getSessionData()), "sessionInfoItem");
+                            getSessionData().getResult() == TaiXiuResult.NONE
+                                    ? invFileConfig.getStringList("items.sessionInfo.lore.playing")
+                                    : invFileConfig.getStringList("items.sessionInfo.lore.ending"),
+                            sessionReplacements(getSessionData())), "sessionInfoItem");
             int sessionInfoItemSlot = invFileConfig.getInt("items.sessionInfo.slot");
             if (sessionInfoItemSlot < 0)
                 sessionInfoItemSlot = 0;
@@ -212,10 +213,17 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
                                 (invFileConfig.getString("items.betPlayer.value") == null ? playerName : (invFileConfig.getString("items.betPlayer.value"))),
                                 (short) invFileConfig.getInt("items.betPlayer.data"),
                                 invFileConfig.getString("items.betPlayer.name"),
-                                invFileConfig.getStringList("items.betPlayer.lore"));
+                                invFileConfig.getStringList("items.betPlayer.lore"),
+                                betReplacements(playerName,
+                                        xiuPlayers.containsKey(playerName)
+                                                ? xiuPlayers.get(playerName)
+                                                : taiPlayers.get(playerName),
+                                        xiuPlayers.containsKey(playerName)
+                                                ? TaiXiuResult.XIU
+                                                : TaiXiuResult.TAI));
                         if (!this.xiuPlayers.isEmpty())
                             if (this.xiuPlayers.containsKey(playerName)) {
-                                ItemStack itemStack = TaiXiu.nms.addCustomData(getBetPlayerItemStack(betPlayerItem, playerName, this.xiuPlayers.get(playerName), TaiXiuResult.XIU), "inventoryItem");
+                                ItemStack itemStack = TaiXiu.nms.addCustomData(betPlayerItem, "inventoryItem");
                                 if (!inventoryItems.contains(itemStack)) {
                                     inventoryItems.add(itemStack);
                                     inventory.addItem(itemStack);
@@ -223,7 +231,7 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
                             }
                         if (!this.taiPlayers.isEmpty())
                             if (this.taiPlayers.containsKey(playerName)) {
-                                ItemStack itemStack = TaiXiu.nms.addCustomData(getBetPlayerItemStack(betPlayerItem, playerName, this.taiPlayers.get(playerName), TaiXiuResult.TAI), "inventoryItem");
+                                ItemStack itemStack = TaiXiu.nms.addCustomData(betPlayerItem, "inventoryItem");
                                 if (!inventoryItems.contains(itemStack)) {
                                     inventoryItems.add(itemStack);
                                     inventory.addItem(itemStack);
@@ -235,46 +243,34 @@ public class TaiXiuInfoInventory extends PaginatedInventory {
         });
     }
 
-    private @NotNull ItemStack getBetPlayerItemStack(ItemStack itemStack, String playerName, long amountBet, TaiXiuResult taiXiuResult) {
-        ItemStack modItem = new ItemStack(itemStack);
-        ItemMeta itemMeta = modItem.getItemMeta();
-
-        String itemName = itemMeta.getDisplayName();
-        itemName = itemName.replace("%playerName%", playerName);
-        itemMeta.setDisplayName(itemName);
-
-        List<String> itemLore = itemMeta.getLore();
-        itemLore.replaceAll(string -> TaiXiu.nms.addColor(string.replace("%bet%", MessageUtil.getFormatResultName(taiXiuResult))
-                .replace("%currencyName%", MessageUtil.getCurrencyName(getSessionData().getCurrencyType()))
-                .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(getSessionData().getCurrencyType()))
-                .replace("%amountBet%", String.valueOf(amountBet))));
-        itemMeta.setLore(itemLore);
-        modItem.setItemMeta(itemMeta);
-        return modItem;
+    private Map<String, String> betReplacements(String playerName, long amountBet, TaiXiuResult result) {
+        return Map.of(
+                "%playerName%", playerName,
+                "%bet%", MessageUtil.getFormatResultName(result),
+                "%currencyName%", MessageUtil.getCurrencyName(getSessionData().getCurrencyType()),
+                "%currencySymbol%", MessageUtil.getCurrencySymbol(getSessionData().getCurrencyType()),
+                "%amountBet%", String.valueOf(amountBet)
+        );
     }
 
-    private @NotNull ItemStack getSessionInfoItemStack(ItemStack itemStack, ISession sessionData) {
-        ItemStack modItem = new ItemStack(itemStack);
-        ItemMeta itemMeta = modItem.getItemMeta();
-
-        List<String> itemLore = itemMeta.getLore();
-        itemLore.replaceAll(string -> TaiXiu.nms.addColor(string.replace("%time%", (sessionData.getResult() != TaiXiuResult.NONE ? "0" : String.valueOf(TaiXiuManager.getTimeLeft())))
-                .replace("%session%", String.valueOf(sessionData.getSession()))
-                .replace("%xiuPlayerNumber%", String.valueOf(sessionData.getXiuPlayerSnapshot().size()))
-                .replace("%taiPlayerNumber%", String.valueOf(sessionData.getTaiPlayerSnapshot().size()))
-                .replace("%xiuTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getXiuBet(sessionData)))
-                .replace("%taiTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTaiBet(sessionData)))
-                .replace("%totalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTotalBet(sessionData)))
-                .replace("%bestWinners%", TaiXiuManager.getBestWinner(sessionData))
-                .replace("%dice1%", String.valueOf(sessionData.getDice1()))
-                .replace("%dice2%", String.valueOf(sessionData.getDice2()))
-                .replace("%dice3%", String.valueOf(sessionData.getDice3()))
-                .replace("%currencyName%", MessageUtil.getCurrencyName(sessionData.getCurrencyType()))
-                .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(sessionData.getCurrencyType()))
-                .replace("%result%", MessageUtil.getFormatResultName(sessionData.getResult()))));
-        itemMeta.setLore(itemLore);
-        modItem.setItemMeta(itemMeta);
-        return modItem;
+    private Map<String, String> sessionReplacements(ISession session) {
+        Map<String, String> replacements = new HashMap<>();
+        replacements.put("%time%", session.getResult() != TaiXiuResult.NONE
+                ? "0" : String.valueOf(TaiXiuManager.getTimeLeft()));
+        replacements.put("%session%", String.valueOf(session.getSession()));
+        replacements.put("%xiuPlayerNumber%", String.valueOf(session.getXiuPlayerSnapshot().size()));
+        replacements.put("%taiPlayerNumber%", String.valueOf(session.getTaiPlayerSnapshot().size()));
+        replacements.put("%xiuTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getXiuBet(session)));
+        replacements.put("%taiTotalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTaiBet(session)));
+        replacements.put("%totalBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTotalBet(session)));
+        replacements.put("%bestWinners%", TaiXiuManager.getBestWinner(session));
+        replacements.put("%dice1%", String.valueOf(session.getDice1()));
+        replacements.put("%dice2%", String.valueOf(session.getDice2()));
+        replacements.put("%dice3%", String.valueOf(session.getDice3()));
+        replacements.put("%currencyName%", MessageUtil.getCurrencyName(session.getCurrencyType()));
+        replacements.put("%currencySymbol%", MessageUtil.getCurrencySymbol(session.getCurrencyType()));
+        replacements.put("%result%", MessageUtil.getFormatResultName(session.getResult()));
+        return replacements;
     }
 
     public enum SortItemsType {

@@ -1,6 +1,6 @@
 package com.cortezromeo.taixiu.geyserform;
 
-import com.cortezromeo.taixiu.TaiXiu;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.geysermc.cumulus.util.FormImage;
 
 public class ButtonData {
@@ -16,7 +16,7 @@ public class ButtonData {
     }
 
     public String getButtonName() {
-        return TaiXiu.nms.addColor(buttonName);
+        return TextFormatter.legacy(buttonName);
     }
 
     public FormImage.Type getButtonImageType() {

@@ -7,6 +7,7 @@ import com.cortezromeo.taixiu.file.GeyserFormFile;
 import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.ModalForm;
@@ -27,10 +28,10 @@ public class InfoGeyserForm {
     }
 
     public static ModalForm getForm(Player player) {
-        return ModalForm.builder().title(title)
-                .content(TaiXiu.nms.addColor(getContent(TaiXiuManager.getTaiXiuTask().getSession())))
-                .button1(TaiXiu.nms.addColor(goBackButtonName))
-                .button2(TaiXiu.nms.addColor(closeButtonName))
+        return ModalForm.builder().title(TextFormatter.legacy(title))
+                .content(TextFormatter.legacy(getContent(TaiXiuManager.getTaiXiuTask().getSession())))
+                .button1(TextFormatter.legacy(goBackButtonName))
+                .button2(TextFormatter.legacy(closeButtonName))
                 .validResultHandler((modalForm, modalFormResponse) -> {
                     if (modalFormResponse.clickedButtonId() == 0)
                         MenuGeyserForm.openForm(player);

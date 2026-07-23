@@ -12,11 +12,15 @@
 #
 #  Discord: https://discord.gg/NWbTVddmBM
 
-config-version: 4
+config-version: 5
 
 # For debugging purposes
 # Do not enable unless necessary
 debug: false
+
+# Text syntax used by all configurable Minecraft and Bedrock UI strings.
+# Available options: LEGACY (&c, &#RRGGBB) or MINIMESSAGE (<red>, <gradient:...>).
+text-format: LEGACY
 
 database:
   # SQLite database file inside the plugin data folder

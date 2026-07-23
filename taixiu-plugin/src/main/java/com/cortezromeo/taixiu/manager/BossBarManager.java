@@ -6,6 +6,7 @@ import com.cortezromeo.taixiu.api.TaiXiuState;
 import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.Bukkit;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -101,7 +102,8 @@ public class BossBarManager {
             return;
 
         if (DatabaseManager.togglePlayers.contains(p.getName())) {
-            BossBar taiXiuBossBar = Bukkit.createBossBar(TaiXiu.nms.addColor(Messages.REQUEST_LOADING.replace("%prefix%", "")),
+            BossBar taiXiuBossBar = Bukkit.createBossBar(
+                    TextFormatter.legacy(Messages.REQUEST_LOADING.replace("%prefix%", "")),
                     bbPlayingColorPausing,
                     bbPlayingStyle
             );
@@ -161,7 +163,7 @@ public class BossBarManager {
                 bossBarTitle = bossBarTitle.replace("%money%",
                         (bbReloadingSession.getResult() == TaiXiuResult.XIU ? TaiXiuManager.getXiuBetFormat(bbReloadingSession) : TaiXiuManager.getTaiBetFormat(bbReloadingSession)));
 
-                bossBar.setTitle(TaiXiu.nms.addColor(bossBarTitle));
+                bossBar.setTitle(TextFormatter.legacy(bossBarTitle));
 
                 bossBarPlayers.get(p).setStyle(bbReloadingStyle);
 
@@ -191,7 +193,7 @@ public class BossBarManager {
                 bossBarTitle = bossBarTitle.replace("%currencySymbol%", MessageUtil.getCurrencySymbol(currentBossBarSession.getCurrencyType()));
                 bossBarTitle = bossBarTitle.replace("%xiuBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getXiuBet(currentBossBarSession)));
                 bossBarTitle = bossBarTitle.replace("%taiBet%", MessageUtil.getFormatMoneyDisplay(TaiXiuManager.getTaiBet(currentBossBarSession)));
-                bossBar.setTitle(TaiXiu.nms.addColor(bossBarTitle));
+                bossBar.setTitle(TextFormatter.legacy(bossBarTitle));
 
                 bossBarPlayers.get(p).setStyle(bbPlayingStyle);
 
