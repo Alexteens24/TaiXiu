@@ -543,6 +543,10 @@ public class TaiXiuManager {
             cashoutRollover(player);
             return;
         }
+        if (!player.hasPermission("taixiu.rollover")) {
+            sendMessage(player, Messages.NO_PERMISSION);
+            return;
+        }
         long targetSession = getSessionData().getSession();
         int cutoff = TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining");
         if (getState() != TaiXiuState.PLAYING || getTimeLeft() <= cutoff) {

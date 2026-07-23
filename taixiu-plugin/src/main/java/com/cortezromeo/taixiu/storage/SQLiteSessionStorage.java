@@ -21,9 +21,11 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable {
     private static final int SCHEMA_VERSION = 4;
+    private static final Logger LOGGER = Logger.getLogger(SQLiteSessionStorage.class.getName());
     private final Connection connection;
     private final File dataFolder;
     private final CurrencyTyppe defaultCurrency;
@@ -64,8 +66,20 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
         configure();
         migrateSchema();
         if (migrateLegacy) migrateActiveLegacySession();
+        recoverMissingRolloverSourceSessions();
         cleanupRetention();
         cleanupJournal();
+    }
+
+    private void recoverMissingRolloverSourceSessions() throws SQLException {
+        if (!tableExists("sessions") || !tableExists("rollover_offers")) return;
+        try (Statement insert = connection.createStatement()) {
+            insert.executeUpdate("INSERT OR IGNORE INTO sessions(" +
+                    "id,status,currency,betting_ends_at,dice1,dice2,dice3,result,created_at,settled_at) " +
+                    "SELECT source_session_id,'SETTLED',MIN(currency),0,0,0,0,'NONE',MIN(created_at),MIN(created_at) " +
+                    "FROM rollover_offers WHERE status IN ('PENDING_TARGET','AVAILABLE','CASHOUT_PENDING') " +
+                    "GROUP BY source_session_id");
+        }
     }
 
     private void configure() throws SQLException {
@@ -314,7 +328,11 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
 
     public synchronized long getLastSessionId() {
         try (Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery("SELECT COALESCE(MAX(id), 0) FROM sessions")) {
+             ResultSet result = statement.executeQuery(
+                     "SELECT MAX(latest) FROM (" +
+                             "SELECT COALESCE(MAX(id),0) AS latest FROM sessions UNION ALL " +
+                             "SELECT COALESCE(MAX(target_session_id),0) FROM rollover_offers " +
+                             "WHERE status IN ('PENDING_TARGET','AVAILABLE'))")) {
             long maximum = result.next() ? result.getLong(1) : 0;
             return Math.max(maximum, legacySeed);
         } catch (SQLException exception) {
@@ -409,12 +427,13 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
     public synchronized SettlementPreparation prepareSettlement(ISession data, List<JournalEntry> payouts,
                                                                   List<RolloverOffer> offers,
                                                                   InsuranceSettings insuranceSettings) {
+        List<JournalEntry> insurancePayouts;
         try {
             connection.setAutoCommit(false);
             persistData(data.getSession(), data, System.currentTimeMillis());
             for (JournalEntry payout : payouts) insertIntent(payout);
             for (RolloverOffer offer : offers) insertRolloverOffer(offer);
-            List<JournalEntry> insurancePayouts = prepareInsurance(data, insuranceSettings);
+            insurancePayouts = prepareInsurance(data, insuranceSettings);
             for (JournalEntry payout : insurancePayouts) insertIntent(payout);
             if (!payouts.isEmpty() || !insurancePayouts.isEmpty()) {
                 try (PreparedStatement update = connection.prepareStatement(
@@ -424,15 +443,14 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
                 }
             }
             connection.commit();
-            cleanupRetention();
-            cleanupJournal();
-            return new SettlementPreparation(insurancePayouts);
         } catch (SQLException exception) {
             try { connection.rollback(); } catch (SQLException ignored) { }
             throw new IllegalStateException("Could not prepare settlement #" + data.getSession(), exception);
         } finally {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
+        cleanupBestEffort("settlement #" + data.getSession());
+        return new SettlementPreparation(insurancePayouts);
     }
 
     private void insertRolloverOffer(RolloverOffer offer) throws SQLException {
@@ -606,6 +624,7 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
     }
 
     public synchronized void cleanupRetention() throws SQLException {
+        cleanupTerminalRolloverOffers();
         String mode = retentionMode;
         if ("ALL".equals(mode)) return;
         if ("DAYS".equals(mode)) {
@@ -613,7 +632,10 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
             long cutoff = System.currentTimeMillis() - days * 86_400_000L;
             try (PreparedStatement delete = connection.prepareStatement(
                     "DELETE FROM sessions WHERE status='SETTLED' AND settled_at<? AND NOT EXISTS " +
-                            "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED')")) {
+                            "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED') " +
+                            "AND NOT EXISTS (SELECT 1 FROM rollover_offers WHERE " +
+                            "rollover_offers.source_session_id=sessions.id AND " +
+                            "status IN ('PENDING_TARGET','AVAILABLE','CASHOUT_PENDING'))")) {
                 delete.setLong(1, cutoff);
                 delete.executeUpdate();
             }
@@ -622,10 +644,20 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
             try (PreparedStatement delete = connection.prepareStatement(
                     "DELETE FROM sessions WHERE status='SETTLED' AND id NOT IN " +
                             "(SELECT id FROM sessions WHERE status='SETTLED' ORDER BY id DESC LIMIT ?) AND NOT EXISTS " +
-                            "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED')")) {
+                            "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED') " +
+                            "AND NOT EXISTS (SELECT 1 FROM rollover_offers WHERE " +
+                            "rollover_offers.source_session_id=sessions.id AND " +
+                            "status IN ('PENDING_TARGET','AVAILABLE','CASHOUT_PENDING'))")) {
                 delete.setLong(1, keep);
                 delete.executeUpdate();
             }
+        }
+    }
+
+    private void cleanupTerminalRolloverOffers() throws SQLException {
+        try (Statement delete = connection.createStatement()) {
+            delete.executeUpdate("DELETE FROM rollover_offers " +
+                    "WHERE status IN ('CONSUMED','CASHED_OUT','FAILED')");
         }
     }
 
@@ -715,91 +747,109 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
     public synchronized void markJournal(String id, String status, String error, String actor, String reason) {
         try {
             connection.setAutoCommit(false);
-        try (PreparedStatement update = connection.prepareStatement(
-                "UPDATE transaction_journal SET status=?,updated_at=?,last_error=?," +
-                        "admin_actor=COALESCE(?,admin_actor),admin_reason=COALESCE(?,admin_reason) WHERE id=?")) {
-            update.setString(1, status);
-            update.setLong(2, System.currentTimeMillis());
-            update.setString(3, error);
-            update.setString(4, actor);
-            update.setString(5, reason);
-            update.setString(6, id);
-            if (update.executeUpdate() != 1)
-                throw new SQLException("Transaction does not exist: " + id);
-            if ("COMPLETED".equals(status)) {
-                try (PreparedStatement payout = connection.prepareStatement(
-                        "UPDATE payouts SET status='COMPLETED',updated_at=? WHERE (session_id,player_uuid)=" +
-                                "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
-                    payout.setLong(1, System.currentTimeMillis());
-                    payout.setString(2, id);
-                    payout.executeUpdate();
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE transaction_journal SET status=?,updated_at=?,last_error=?," +
+                            "admin_actor=COALESCE(?,admin_actor),admin_reason=COALESCE(?,admin_reason) WHERE id=?")) {
+                update.setString(1, status);
+                update.setLong(2, System.currentTimeMillis());
+                update.setString(3, error);
+                update.setString(4, actor);
+                update.setString(5, reason);
+                update.setString(6, id);
+                if (update.executeUpdate() != 1)
+                    throw new SQLException("Transaction does not exist: " + id);
+                if ("COMPLETED".equals(status)) {
+                    try (PreparedStatement payout = connection.prepareStatement(
+                            "UPDATE payouts SET status='COMPLETED',updated_at=? WHERE (session_id,player_uuid)=" +
+                                    "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
+                        payout.setLong(1, System.currentTimeMillis());
+                        payout.setString(2, id);
+                        payout.executeUpdate();
+                    }
+                    try (PreparedStatement settle = connection.prepareStatement(
+                            "UPDATE sessions SET status='SETTLED',settled_at=? WHERE id=" +
+                                    "(SELECT session_id FROM transaction_journal WHERE id=?) AND result<>'NONE' AND NOT EXISTS " +
+                                    "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED')")) {
+                        settle.setLong(1, System.currentTimeMillis());
+                        settle.setString(2, id);
+                        settle.executeUpdate();
+                    }
+                } else if ("FAILED".equals(status)) {
+                    try (PreparedStatement payout = connection.prepareStatement(
+                            "UPDATE payouts SET status='FAILED',last_error=?,updated_at=? WHERE (session_id,player_uuid)=" +
+                                    "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
+                        payout.setString(1, error);
+                        payout.setLong(2, System.currentTimeMillis());
+                        payout.setString(3, id);
+                        payout.executeUpdate();
+                    }
+                } else if ("PREPARED".equals(status)) {
+                    try (PreparedStatement payout = connection.prepareStatement(
+                            "UPDATE payouts SET status='PENDING',attempts=attempts+1,last_error=NULL,updated_at=? WHERE (session_id,player_uuid)=" +
+                                    "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
+                        payout.setLong(1, System.currentTimeMillis());
+                        payout.setString(2, id);
+                        payout.executeUpdate();
+                    }
+                } else if ("UNKNOWN".equals(status)) {
+                    try (PreparedStatement payout = connection.prepareStatement(
+                            "UPDATE payouts SET status='PENDING',last_error=?,updated_at=? WHERE (session_id,player_uuid)=" +
+                                    "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
+                        payout.setString(1, error);
+                        payout.setLong(2, System.currentTimeMillis());
+                        payout.setString(3, id);
+                        payout.executeUpdate();
+                    }
                 }
-                try (PreparedStatement settle = connection.prepareStatement(
-                        "UPDATE sessions SET status='SETTLED',settled_at=? WHERE id=" +
-                                "(SELECT session_id FROM transaction_journal WHERE id=?) AND result<>'NONE' AND NOT EXISTS " +
-                                "(SELECT 1 FROM payouts WHERE payouts.session_id=sessions.id AND status<>'COMPLETED')")) {
-                    settle.setLong(1, System.currentTimeMillis());
-                    settle.setString(2, id);
-                    settle.executeUpdate();
+                String offerStatus = switch (status) {
+                    case "COMPLETED" -> "CASHED_OUT";
+                    case "FAILED" -> "FAILED";
+                    default -> "CASHOUT_PENDING";
+                };
+                try (PreparedStatement updateOffer = connection.prepareStatement(
+                        "UPDATE rollover_offers SET status=?,updated_at=? WHERE journal_id=?")) {
+                    updateOffer.setString(1, offerStatus);
+                    updateOffer.setLong(2, System.currentTimeMillis());
+                    updateOffer.setString(3, id);
+                    updateOffer.executeUpdate();
                 }
-            } else if ("FAILED".equals(status)) {
-                try (PreparedStatement payout = connection.prepareStatement(
-                        "UPDATE payouts SET status='FAILED',last_error=?,updated_at=? WHERE (session_id,player_uuid)=" +
-                                "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
-                    payout.setString(1, error);
-                    payout.setLong(2, System.currentTimeMillis());
-                    payout.setString(3, id);
-                    payout.executeUpdate();
-                }
-            } else if ("PREPARED".equals(status)) {
-                try (PreparedStatement payout = connection.prepareStatement(
-                        "UPDATE payouts SET status='PENDING',attempts=attempts+1,last_error=NULL,updated_at=? WHERE (session_id,player_uuid)=" +
-                                "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
-                    payout.setLong(1, System.currentTimeMillis());
-                    payout.setString(2, id);
-                    payout.executeUpdate();
-                }
-            } else if ("UNKNOWN".equals(status)) {
-                try (PreparedStatement payout = connection.prepareStatement(
-                        "UPDATE payouts SET status='PENDING',last_error=?,updated_at=? WHERE (session_id,player_uuid)=" +
-                                "(SELECT session_id,player_uuid FROM transaction_journal WHERE id=? AND kind='PAYOUT')")) {
-                    payout.setString(1, error);
-                    payout.setLong(2, System.currentTimeMillis());
-                    payout.setString(3, id);
-                    payout.executeUpdate();
+                try (PreparedStatement updateAward = connection.prepareStatement(
+                        "UPDATE insurance_awards SET status=?,updated_at=? WHERE journal_id=?")) {
+                    updateAward.setString(1, status);
+                    updateAward.setLong(2, System.currentTimeMillis());
+                    updateAward.setString(3, id);
+                    updateAward.executeUpdate();
                 }
             }
-            String offerStatus = switch (status) {
-                case "COMPLETED" -> "CASHED_OUT";
-                case "FAILED" -> "FAILED";
-                default -> "CASHOUT_PENDING";
-            };
-            try (PreparedStatement updateOffer = connection.prepareStatement(
-                    "UPDATE rollover_offers SET status=?,updated_at=? WHERE journal_id=?")) {
-                updateOffer.setString(1, offerStatus);
-                updateOffer.setLong(2, System.currentTimeMillis());
-                updateOffer.setString(3, id);
-                updateOffer.executeUpdate();
-            }
-            try (PreparedStatement updateAward = connection.prepareStatement(
-                    "UPDATE insurance_awards SET status=?,updated_at=? WHERE journal_id=?")) {
-                updateAward.setString(1, status);
-                updateAward.setLong(2, System.currentTimeMillis());
-                updateAward.setString(3, id);
-                updateAward.executeUpdate();
-            }
-        }
             connection.commit();
-            if ("COMPLETED".equals(status) || "COMPENSATED".equals(status) || "FAILED".equals(status)) {
-                cleanupRetention();
-                cleanupJournal();
-            }
         } catch (SQLException exception) {
             try { connection.rollback(); } catch (SQLException ignored) { }
             throw new IllegalStateException("Could not update transaction journal " + id, exception);
         } finally {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
+        if ("COMPLETED".equals(status) || "COMPENSATED".equals(status) || "FAILED".equals(status))
+            cleanupBestEffort("transaction journal " + id);
+    }
+
+    private void cleanupBestEffort(String context) {
+        try {
+            cleanupRetention();
+        } catch (Exception exception) {
+            warnCleanupFailure("retention", context, exception);
+        }
+        try {
+            cleanupJournal();
+        } catch (Exception exception) {
+            warnCleanupFailure("journal", context, exception);
+        }
+    }
+
+    private void warnCleanupFailure(String cleanup, String context, Exception exception) {
+        String message = "Could not run " + cleanup + " cleanup after committed " + context
+                + ": " + exception.getMessage();
+        if (TaiXiu.plugin != null) TaiXiu.plugin.getLogger().warning(message);
+        else LOGGER.warning(message);
     }
 
     public synchronized java.util.List<JournalEntry> unresolvedJournal() {
@@ -848,15 +898,23 @@ public final class SQLiteSessionStorage implements SessionStorage, AutoCloseable
     }
 
     public synchronized void activateRolloverOffers(long targetSessionId, long expiresAt) {
-        try (PreparedStatement update = connection.prepareStatement(
-                "UPDATE rollover_offers SET status='AVAILABLE',expires_at=?,updated_at=? " +
-                        "WHERE target_session_id=? AND status='PENDING_TARGET'")) {
-            update.setLong(1, expiresAt);
-            update.setLong(2, System.currentTimeMillis());
-            update.setLong(3, targetSessionId);
-            update.executeUpdate();
+        try {
+            connection.setAutoCommit(false);
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE rollover_offers SET target_session_id=?,status='AVAILABLE',expires_at=?,updated_at=? " +
+                            "WHERE target_session_id<=? AND status IN ('PENDING_TARGET','AVAILABLE')")) {
+                update.setLong(1, targetSessionId);
+                update.setLong(2, expiresAt);
+                update.setLong(3, System.currentTimeMillis());
+                update.setLong(4, targetSessionId);
+                update.executeUpdate();
+            }
+            connection.commit();
         } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException ignored) { }
             throw new IllegalStateException("Could not activate rollover offers for #" + targetSessionId, exception);
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
     }
 

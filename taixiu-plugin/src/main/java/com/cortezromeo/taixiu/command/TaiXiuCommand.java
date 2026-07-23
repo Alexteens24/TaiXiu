@@ -96,9 +96,15 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                 case "rollover":
                 case "nhoi":
                     String choice = args[1].toLowerCase();
-                    if (choice.equals("high") || choice.equals("tai") || choice.equals("tài"))
+                    boolean high = choice.equals("high") || choice.equals("tai") || choice.equals("tài");
+                    boolean low = choice.equals("low") || choice.equals("xiu") || choice.equals("xỉu");
+                    if ((high || low) && !p.hasPermission("taixiu.rollover")) {
+                        sendMessage(p, Messages.NO_PERMISSION);
+                        return true;
+                    }
+                    if (high)
                         TaiXiuManager.rollover(p, TaiXiuResult.TAI);
-                    else if (choice.equals("low") || choice.equals("xiu") || choice.equals("xỉu"))
+                    else if (low)
                         TaiXiuManager.rollover(p, TaiXiuResult.XIU);
                     else if (choice.equals("cashout") || choice.equals("nhantien") || choice.equals("nhận-tiền"))
                         TaiXiuManager.cashoutRollover(p);

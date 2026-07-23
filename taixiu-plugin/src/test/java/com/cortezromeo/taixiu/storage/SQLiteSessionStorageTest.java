@@ -224,9 +224,141 @@ class SQLiteSessionStorageTest {
         }
     }
 
+    @Test
+    void committedSettlementSucceedsWhenRetentionCleanupFails() throws Exception {
+        File database = new File(directory, "settlement-cleanup.db");
+        try (SQLiteSessionStorage storage = storage(database, "COUNT", 90, 1)) {
+            SessionData old = activeSession(60, "Old", UUID.randomUUID(), 100);
+            old.setResult(TaiXiuResult.TAI);
+            storage.saveData(60, old);
+            installSessionDeleteFailure(database);
+
+            SessionData current = activeSession(61, "Alex", UUID.randomUUID(), 100);
+            current.setResult(TaiXiuResult.TAI);
+            assertDoesNotThrow(() -> storage.prepareSettlement(current, List.of()));
+            assertEquals(TaiXiuResult.TAI, storage.getData(61).getResult());
+        }
+    }
+
+    @Test
+    void committedJournalUpdateSucceedsWhenRetentionCleanupFails() throws Exception {
+        File database = new File(directory, "journal-cleanup.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database, "COUNT", 90, 1)) {
+            SessionData old = activeSession(70, "Old", UUID.randomUUID(), 100);
+            old.setResult(TaiXiuResult.TAI);
+            storage.saveData(70, old);
+
+            SessionData current = activeSession(71, "Alex", playerId, 100);
+            current.setResult(TaiXiuResult.TAI);
+            JournalEntry payout = new JournalEntry("cleanup-payout", 71, playerId, "Alex",
+                    CurrencyTyppe.VAULT, "PAYOUT", 200);
+            storage.prepareSettlement(current, List.of(payout));
+            installSessionDeleteFailure(database);
+
+            assertDoesNotThrow(() -> storage.markJournal(payout.id(), "COMPLETED"));
+            assertEquals("COMPLETED", storage.findJournal(payout.id()).orElseThrow().status());
+        }
+    }
+
+    @Test
+    void retentionKeepsSessionsBackingLiveRolloverEscrow() throws Exception {
+        for (String mode : List.of("COUNT", "DAYS")) {
+            File database = new File(directory, "retention-" + mode + ".db");
+            UUID playerId = UUID.randomUUID();
+            try (SQLiteSessionStorage storage = storage(database, mode, 1, 1)) {
+                SessionData source = activeSession(80, "Alex", playerId, 100);
+                source.setResult(TaiXiuResult.TAI);
+                storage.prepareSettlement(source, List.of(), List.of(new RolloverOffer(
+                                "offer-" + mode, 80, 81, playerId, "Alex", CurrencyTyppe.VAULT,
+                                200, 1, 0, "PENDING_TARGET", null)),
+                        new InsuranceSettings(false, 3, 20, 0));
+
+                if ("COUNT".equals(mode)) {
+                    SessionData newer = activeSession(81, "New", UUID.randomUUID(), 100);
+                    newer.setResult(TaiXiuResult.TAI);
+                    storage.saveData(81, newer);
+                } else {
+                    try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database.getAbsolutePath())) {
+                        connection.createStatement().executeUpdate("UPDATE sessions SET settled_at=0 WHERE id=80");
+                    }
+                }
+
+                storage.cleanupRetention();
+                assertTrue(storage.exists(80), mode + " retention deleted live rollover escrow source");
+            }
+        }
+    }
+
+    @Test
+    void staleRolloverOfferMovesToCurrentSessionAndTerminalOfferIsCleaned() throws Exception {
+        File database = new File(directory, "rollover-recovery.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database)) {
+            SessionData source = activeSession(90, "Alex", playerId, 100);
+            source.setResult(TaiXiuResult.TAI);
+            storage.prepareSettlement(source, List.of(), List.of(new RolloverOffer(
+                            "stale-offer", 90, 91, playerId, "Alex", CurrencyTyppe.VAULT,
+                            200, 1, 0, "PENDING_TARGET", null)),
+                    new InsuranceSettings(false, 3, 20, 0));
+            storage.saveData(95, new SessionData(95, 0, 0, 0, TaiXiuResult.NONE,
+                    new HashMap<>(), new HashMap<>(), CurrencyTyppe.VAULT));
+
+            storage.activateRolloverOffers(95, System.currentTimeMillis() + 60_000);
+            RolloverOffer recovered = storage.findAvailableRollover(playerId, 95).orElseThrow();
+            assertEquals(95, recovered.targetSessionId());
+
+            BetMetadata metadata = new BetMetadata(playerId, 0, true, false,
+                    BetMetadata.FundingSource.ESCROW, 1);
+            assertTrue(storage.consumeRollover(recovered.id(), 95, TaiXiuResult.TAI, metadata).isPresent());
+            storage.cleanupRetention();
+            try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database.getAbsolutePath());
+                 var row = connection.createStatement().executeQuery(
+                         "SELECT COUNT(*) FROM rollover_offers WHERE id='stale-offer'")) {
+                assertTrue(row.next());
+                assertEquals(0, row.getInt(1));
+            }
+        }
+    }
+
+    @Test
+    void pendingRolloverTargetPreventsSessionCounterFromResetting() throws Exception {
+        File database = new File(directory, "rollover-session-seed.db");
+        UUID playerId = UUID.randomUUID();
+        try (SQLiteSessionStorage storage = storage(database)) {
+            SessionData source = activeSession(100, "Alex", playerId, 100);
+            source.setResult(TaiXiuResult.TAI);
+            storage.prepareSettlement(source, List.of(), List.of(new RolloverOffer(
+                            "seed-offer", 100, 101, playerId, "Alex", CurrencyTyppe.VAULT,
+                            200, 1, 0, "PENDING_TARGET", null)),
+                    new InsuranceSettings(false, 3, 20, 0));
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database.getAbsolutePath())) {
+            connection.createStatement().executeUpdate("DELETE FROM sessions");
+        }
+        try (SQLiteSessionStorage storage = storage(database)) {
+            assertEquals(101, storage.getLastSessionId());
+            assertTrue(storage.exists(100));
+            storage.activateRolloverOffers(101, System.currentTimeMillis() + 60_000);
+            JournalEntry cashout = storage.prepareRolloverCashout(playerId, 101).orElseThrow();
+            assertEquals(100, cashout.sessionId());
+        }
+    }
+
+    private void installSessionDeleteFailure(File database) throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database.getAbsolutePath())) {
+            connection.createStatement().executeUpdate(
+                    "CREATE TRIGGER reject_session_cleanup BEFORE DELETE ON sessions " +
+                            "BEGIN SELECT RAISE(ABORT, 'forced cleanup failure'); END");
+        }
+    }
+
     private SQLiteSessionStorage storage(File database) throws Exception {
-        return new SQLiteSessionStorage(database, directory, CurrencyTyppe.VAULT,
-                "ALL", 90, 10_000, false);
+        return storage(database, "ALL", 90, 10_000);
+    }
+
+    private SQLiteSessionStorage storage(File database, String mode, long days, long count) throws Exception {
+        return new SQLiteSessionStorage(database, directory, CurrencyTyppe.VAULT, mode, days, count, false);
     }
 
     private SessionData activeSession(long id, String name, UUID playerId, long stake) {
