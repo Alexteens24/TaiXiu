@@ -49,9 +49,16 @@ public class MessageUtil {
         if (message.equals(""))
             return;
 
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            sendMessage(p, message);
-        }
+        String resolved = message.replace("%prefix%", Messages.PREFIX);
+        TextFormatter.Mode selectedMode = TextFormatter.mode();
+        for (Player player : Bukkit.getOnlinePlayers())
+            sendResolvedPlayerMessage(player, resolved, selectedMode);
+    }
+
+    public static void sendBroadCast(Component message) {
+        if (message == null) return;
+        for (Player player : Bukkit.getOnlinePlayers())
+            sendComponent(player, message);
     }
 
     public static void log(String message) {
@@ -95,17 +102,23 @@ public class MessageUtil {
     }
 
     private static void sendResolvedPlayerMessage(Player player, String message, boolean legacy) {
+        TextFormatter.Mode selectedMode = legacy ? TextFormatter.Mode.LEGACY : TextFormatter.mode();
+        sendResolvedPlayerMessage(player, message, selectedMode);
+    }
+
+    private static void sendResolvedPlayerMessage(Player player, String message, TextFormatter.Mode selectedMode) {
         Runnable delivery = () -> {
-            String resolved = TaiXiu.support.isPlaceholderAPISupported()
-                    ? PlaceholderAPI.setPlaceholders(player, message)
-                    : message;
-            Component component = legacy
-                    ? TextFormatter.legacyComponent(resolved)
-                    : TextFormatter.component(resolved);
-            player.sendMessage(component);
+            player.sendMessage(resolvePlayerMessage(player, message, selectedMode));
         };
         if (Bukkit.isOwnedByCurrentRegion(player)) delivery.run();
         else TaiXiu.scheduler.runEntity(player, delivery);
+    }
+
+    public static Component resolvePlayerMessage(Player player, String message, TextFormatter.Mode selectedMode) {
+        if (!TaiXiu.support.isPlaceholderAPISupported())
+            return TextFormatter.component(message, selectedMode);
+        return TextFormatter.componentWithUnparsedPlaceholders(message, selectedMode,
+                token -> PlaceholderAPI.setPlaceholders(player, token));
     }
 
     // only use for testing plugin

@@ -30,6 +30,7 @@ The `folia-supported: true` manifest flag allows the plugin to load for this val
 - [ ] Convert the UI configuration, switch to `MINIMESSAGE`, reload, and verify the same surfaces render colors, gradients, and decorations.
 - [ ] Verify MiniMessage click/hover events work in Java chat and rollover prompt buttons remain clickable.
 - [ ] Verify `%taixiu_resultformat_*%` remains legacy-compatible and Discord currency names contain no formatting tags.
+- [ ] Return MiniMessage click/hover tags and legacy color codes from a PlaceholderAPI expansion; verify they display literally and create no events.
 - [ ] Introduce an invalid MiniMessage tag and verify the plugin warns without breaking message delivery or gameplay.
 
 ## Thread and lifecycle failures
@@ -42,7 +43,7 @@ The `folia-supported: true` manifest flag allows the plugin to load for this val
 - [ ] Force the shutdown timeout and verify every still-running journal-backed operation is persisted as `UNKNOWN` before SQLite closes.
 - [ ] Verify no late callback throws `RejectedExecutionException` or accesses a closed SQLite connection.
 - [ ] On Folia, confirm there are no synchronous-event or wrong-region errors such as `BalanceChangeEvent may only be triggered synchronously`.
-- [ ] On Folia, reload between `LEGACY` and `MINIMESSAGE` while players are online and verify delivery remains entity-scheduled.
+- [ ] On Folia, queue messages around reloads between `LEGACY` and `MINIMESSAGE`; verify delivery remains entity-scheduled and each queued message keeps its original mode.
 
 ## Provider and persistence failures
 

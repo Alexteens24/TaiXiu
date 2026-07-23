@@ -26,7 +26,6 @@ import com.cortezromeo.taixiu.util.MessageUtil;
 import com.cortezromeo.taixiu.util.BetPermissionPolicy;
 import com.cortezromeo.taixiu.util.TextFormatter;
 import com.cortezromeo.taixiu.geyserform.RolloverGeyserForm;
-import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -491,9 +490,9 @@ public class TaiXiuManager {
                 .replace("%money%", MessageUtil.getFormatMoneyDisplay(money));
 
         String broadcast = messageBroadcastPlayerBet;
+        TextFormatter.Mode broadcastMode = TextFormatter.mode();
         TaiXiu.scheduler.runEntity(player, () -> {
-            String formatted = TaiXiu.support.isPlaceholderAPISupported()
-                    ? PlaceholderAPI.setPlaceholders(player, broadcast) : broadcast;
+            Component formatted = MessageUtil.resolvePlayerMessage(player, broadcast, broadcastMode);
             sendBroadCast(formatted);
             Bukkit.getServer().getPluginManager().callEvent(new PlayerBetEvent(player, result, money));
         });

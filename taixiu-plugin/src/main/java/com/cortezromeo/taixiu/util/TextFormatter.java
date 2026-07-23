@@ -5,15 +5,19 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class TextFormatter {
     private static final Pattern LEGACY_HEX = Pattern.compile("&#([A-Fa-f0-9]{6})");
     private static final Pattern MINI_TAG = Pattern.compile("(?<!\\\\)</?[A-Za-z#!?][^>]*>");
+    private static final Pattern PERCENT_PLACEHOLDER = Pattern.compile("%[^%\\r\\n]+%");
     private static final String LEGACY_CODES = "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx";
     private static final long WARNING_INTERVAL_MILLIS = 60_000;
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
@@ -24,6 +28,7 @@ public final class TextFormatter {
             .build();
     private static final PlainTextComponentSerializer PLAIN_TEXT = PlainTextComponentSerializer.plainText();
     private static final AtomicLong NEXT_WARNING_AT = new AtomicLong();
+    private static final AtomicLong PLACEHOLDER_SEQUENCE = new AtomicLong();
     private static volatile Mode mode = Mode.LEGACY;
     private static volatile Consumer<String> warningSink = ignored -> { };
 
@@ -54,6 +59,25 @@ public final class TextFormatter {
     }
 
     static Component component(String input, Mode selectedMode) {
+        return parse(input, selectedMode);
+    }
+
+    static Component componentWithUnparsedPlaceholders(String input, Mode selectedMode,
+                                                       Function<String, String> resolver) {
+        if (input == null || input.isEmpty()) return Component.empty();
+        if (resolver == null) return parse(input, selectedMode);
+
+        ResolvedPlaceholders resolved = resolvePlaceholders(input, selectedMode, resolver);
+        Component component = parse(resolved.template(), selectedMode);
+        for (LiteralPlaceholder placeholder : resolved.placeholders()) {
+            component = component.replaceText(builder -> builder
+                    .matchLiteral(placeholder.marker())
+                    .replacement(Component.text(placeholder.value())));
+        }
+        return component;
+    }
+
+    private static Component parse(String input, Mode selectedMode) {
         if (input == null || input.isEmpty()) return Component.empty();
         if (selectedMode == Mode.LEGACY)
             return LEGACY_SECTION.deserialize(translateLegacy(input));
@@ -66,6 +90,53 @@ public final class TextFormatter {
             warnMiniMessageFailure(exception);
             return Component.text(stripBrokenMiniMessage(input));
         }
+    }
+
+    private static ResolvedPlaceholders resolvePlaceholders(String input, Mode selectedMode,
+                                                            Function<String, String> resolver) {
+        Matcher matcher = PERCENT_PLACEHOLDER.matcher(input);
+        StringBuilder template = new StringBuilder(input.length());
+        List<LiteralPlaceholder> placeholders = new ArrayList<>();
+        String nonce = Long.toUnsignedString(PLACEHOLDER_SEQUENCE.incrementAndGet(), 36);
+
+        while (matcher.find()) {
+            String token = matcher.group();
+            if (selectedMode == Mode.MINIMESSAGE && insideMiniMessageTag(input, matcher.start())) {
+                matcher.appendReplacement(template, Matcher.quoteReplacement(token));
+                continue;
+            }
+
+            String value = resolver.apply(token);
+            if (value == null || value.equals(token)) {
+                matcher.appendReplacement(template, Matcher.quoteReplacement(token));
+                continue;
+            }
+
+            String marker = "\uE000txp" + nonce + "_" + placeholders.size() + "\uE001";
+            placeholders.add(new LiteralPlaceholder(marker, value));
+            matcher.appendReplacement(template, Matcher.quoteReplacement(marker));
+        }
+        matcher.appendTail(template);
+        return new ResolvedPlaceholders(template.toString(), placeholders);
+    }
+
+    private static boolean insideMiniMessageTag(String input, int index) {
+        boolean escaped = false;
+        boolean insideTag = false;
+        for (int i = 0; i < index; i++) {
+            char current = input.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (current == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (current == '<') insideTag = true;
+            else if (current == '>') insideTag = false;
+        }
+        return insideTag;
     }
 
     public static Component legacyComponent(String input) {
@@ -139,4 +210,8 @@ public final class TextFormatter {
         warningSink.accept("Could not parse configured MiniMessage text; displaying it without formatting: "
                 + exception.getMessage());
     }
+
+    private record LiteralPlaceholder(String marker, String value) { }
+
+    private record ResolvedPlaceholders(String template, List<LiteralPlaceholder> placeholders) { }
 }

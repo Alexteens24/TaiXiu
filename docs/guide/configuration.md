@@ -125,6 +125,8 @@ text-format: MINIMESSAGE
 ```
 
 MiniMessage chat supports the standard tags, including click and hover events. Boss bars, inventories, and Geyser forms receive colors and decorations through a legacy-string bridge, so interactive events do not apply there. Keep placeholder names such as `%prefix%` and `%money%` intact when translating text. `/taixiuadmin reload` applies a mode change.
+
+PlaceholderAPI output is inserted as literal text after the configured template is parsed. Tags and legacy color codes returned by an expansion are therefore displayed literally and cannot create formatting or interactive events. PlaceholderAPI tokens are not resolved inside MiniMessage tag arguments; use trusted, static configuration for click commands and other tag arguments. Messages already queued for an entity scheduler keep the text mode captured before a reload.
 :::
 
 ## Reload behavior

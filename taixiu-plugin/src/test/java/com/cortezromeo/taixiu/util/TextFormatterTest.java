@@ -1,5 +1,6 @@
 package com.cortezromeo.taixiu.util;
 
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.junit.jupiter.api.AfterEach;
@@ -60,6 +61,64 @@ class TextFormatterTest {
     }
 
     @Test
+    void insertsExternalPlaceholderOutputAsLiteralText() {
+        var component = TextFormatter.componentWithUnparsedPlaceholders(
+                "<green>Rank: %rank% %action%</green>",
+                TextFormatter.Mode.MINIMESSAGE,
+                token -> switch (token) {
+                    case "%rank%" -> "&a<red>VIP</red>";
+                    case "%action%" -> "<click:run_command:'/some-command'><hover:show_text:'Secret'>Click me</hover></click>";
+                    default -> token;
+                });
+
+        assertEquals("Rank: &a<red>VIP</red> <click:run_command:'/some-command'>"
+                        + "<hover:show_text:'Secret'>Click me</hover></click>",
+                TextFormatter.plain(component));
+        assertFalse(hasClickEvent(component));
+        assertFalse(hasHoverEvent(component));
+    }
+
+    @Test
+    void preservesUnresolvedPlaceholdersAndDoesNotResolveTagArguments() {
+        var component = TextFormatter.componentWithUnparsedPlaceholders(
+                "<click:run_command:'/%command%'>%known% %unknown%</click>",
+                TextFormatter.Mode.MINIMESSAGE,
+                token -> token.equals("%known%") ? "safe" : token);
+
+        assertEquals("safe %unknown%", TextFormatter.plain(component));
+        assertEquals("/%command%", component.clickEvent().value());
+    }
+
+    @Test
+    void insertsExternalPlaceholderOutputLiterallyInLegacyMode() {
+        var component = TextFormatter.componentWithUnparsedPlaceholders(
+                "&cRank: %rank%",
+                TextFormatter.Mode.LEGACY,
+                token -> "&aVIP");
+
+        assertEquals("Rank: &aVIP", TextFormatter.plain(component));
+        assertEquals(NamedTextColor.RED, component.color());
+    }
+
+    @Test
+    void capturedModeIsStableAcrossReload() {
+        TextFormatter.configure("LEGACY", warning -> fail(warning));
+        TextFormatter.Mode legacySnapshot = TextFormatter.mode();
+        TextFormatter.configure("MINIMESSAGE", warning -> fail(warning));
+
+        var queuedLegacy = TextFormatter.component("&cQueued", legacySnapshot);
+        assertEquals(NamedTextColor.RED, queuedLegacy.color());
+        assertEquals("Queued", TextFormatter.plain(queuedLegacy));
+
+        TextFormatter.Mode miniSnapshot = TextFormatter.mode();
+        TextFormatter.configure("LEGACY", warning -> fail(warning));
+
+        var queuedMini = TextFormatter.component("<red>Queued</red>", miniSnapshot);
+        assertEquals(NamedTextColor.RED, queuedMini.color());
+        assertEquals("Queued", TextFormatter.plain(queuedMini));
+    }
+
+    @Test
     void malformedMiniMessageWarnsAndFallsBackWithoutFormatting() {
         List<String> warnings = new ArrayList<>();
         TextFormatter.configure("MINIMESSAGE", warnings::add);
@@ -72,5 +131,15 @@ class TextFormatterTest {
     void validatesConfiguredModeCaseInsensitively() {
         assertEquals(TextFormatter.Mode.MINIMESSAGE, TextFormatter.Mode.parse("minimessage"));
         assertThrows(IllegalArgumentException.class, () -> TextFormatter.Mode.parse("mixed"));
+    }
+
+    private static boolean hasClickEvent(Component component) {
+        if (component.clickEvent() != null) return true;
+        return component.children().stream().anyMatch(TextFormatterTest::hasClickEvent);
+    }
+
+    private static boolean hasHoverEvent(Component component) {
+        if (component.hoverEvent() != null) return true;
+        return component.children().stream().anyMatch(TextFormatterTest::hasHoverEvent);
     }
 }
