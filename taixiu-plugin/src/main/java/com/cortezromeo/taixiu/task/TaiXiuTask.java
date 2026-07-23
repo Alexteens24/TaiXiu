@@ -23,6 +23,8 @@ public class TaiXiuTask implements Runnable {
     private volatile TaiXiuState state;
     private volatile ISession data;
     private volatile boolean settlementInProgress;
+    private volatile boolean rolloverExpiryInProgress;
+    private volatile long rolloverExpiredSession = Long.MIN_VALUE;
 
     public TaiXiuTask(int time) {
         long latestSession = DatabaseManager.getLastSessionFromFile();
@@ -39,6 +41,10 @@ public class TaiXiuTask implements Runnable {
                     .exceptionally(error -> databaseFailure("persist startup deadline", error));
         }
         this.state = TaiXiuManager.isHealthy() ? TaiXiuState.PLAYING : TaiXiuState.PAUSING;
+        long cutoffDeadline = System.currentTimeMillis()
+                + Math.max(0, this.time - TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining")) * 1000L;
+        TaiXiuManager.activateRolloverOffers(data.getSession(), cutoffDeadline)
+                .exceptionally(error -> databaseFailure("activate startup rollover offers", error));
         this.task = TaiXiu.scheduler.runGlobalTimer(this, 1, 20L);
 
         debug("TAIXIU TASK", "RUNNING TASK ID: " + getTaskID() + " | SESSION NUMBER: " + data.getSession());
@@ -86,8 +92,27 @@ public class TaiXiuTask implements Runnable {
     public void run() {
         if (state == TaiXiuState.PLAYING) {
             try {
-                if (settlementInProgress) return;
+                if (settlementInProgress || rolloverExpiryInProgress) return;
                 time--;
+
+                int cutoff = TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining");
+                if (time <= cutoff && rolloverExpiredSession != getSession().getSession()) {
+                    // Preserve an already elapsed persisted deadline on restart instead of extending the round.
+                    time = Math.max(0, time);
+                    rolloverExpiryInProgress = true;
+                    long expiringSession = getSession().getSession();
+                    TaiXiuManager.expireRolloverOffers(expiringSession).whenComplete((ignored, error) ->
+                            TaiXiu.scheduler.runGlobal(() -> {
+                                rolloverExpiryInProgress = false;
+                                if (error != null) {
+                                    TaiXiuManager.markUnhealthy("ROLLOVER_EXPIRY_FAILURE");
+                                    MessageUtil.throwErrorMessage("Could not expire rollover offers: " + error.getMessage());
+                                } else {
+                                    rolloverExpiredSession = expiringSession;
+                                }
+                            }));
+                    return;
+                }
 
                 if (getSession().getResult() != TaiXiuResult.NONE)
                     time = 0;
@@ -142,6 +167,12 @@ public class TaiXiuTask implements Runnable {
         BossBarManager.onSessionSwap(oldSessionData, getSession());
 
         TaiXiuManager.setTime(TaiXiu.plugin.getConfig().getInt("task.taiXiuTask.time-per-session"));
+        int cutoff = TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining");
+        long cutoffDeadline = System.currentTimeMillis() + Math.max(0, time - cutoff) * 1000L;
+        TaiXiuManager.activateRolloverOffers(newSession, cutoffDeadline).exceptionally(error -> {
+            databaseFailure("activate rollover offers", error);
+            return null;
+        });
         TaiXiuManager.setCurrencyType(CurrencyTyppe.valueOf(
                 TaiXiu.plugin.getConfig().getString("currency-settings.default").toUpperCase()));
         for (String playerBossBar : DatabaseManager.togglePlayers)

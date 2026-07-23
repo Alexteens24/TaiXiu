@@ -5,6 +5,7 @@ import com.cortezromeo.taixiu.file.GeyserFormFile;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.ModalForm;
+import com.cortezromeo.taixiu.util.BetPermissionPolicy;
 
 public class RuleGeyserForm {
 
@@ -19,15 +20,19 @@ public class RuleGeyserForm {
         String stringPath = "form.rule.";
         title = geyserFormFile.getString(stringPath + "title");
         content = geyserFormFile.getString(stringPath + "content");
-        content = content.replace("%minBet%", TaiXiu.plugin.getConfig().getString("bet-settings.min-bet"));
-        content = content.replace("%maxBet%", TaiXiu.plugin.getConfig().getString("bet-settings.max-bet"));
         goBackButtonName = geyserFormFile.getString(stringPath + "button.goBack.name");
         closeButtonName = geyserFormFile.getString(stringPath + "button.close.name");
     }
 
     public static ModalForm getForm(Player player) {
+        String playerContent = content
+                .replace("%minBet%", TaiXiu.plugin.getConfig().getString("bet-settings.min-bet"))
+                .replace("%maxBet%", String.valueOf(BetPermissionPolicy.effectiveMaxBet(player,
+                        TaiXiu.plugin.getConfig().getLong("bet-settings.max-bet"))))
+                .replace("%tax%", String.valueOf(BetPermissionPolicy.effectiveTax(player,
+                        TaiXiu.plugin.getConfig().getDouble("bet-settings.tax"))));
         return ModalForm.builder().title(TaiXiu.nms.addColor(title))
-                .content(TaiXiu.nms.addColor(content))
+                .content(TaiXiu.nms.addColor(playerContent))
                 .button1(TaiXiu.nms.addColor(goBackButtonName))
                 .button2(TaiXiu.nms.addColor(closeButtonName))
                 .validResultHandler((modalForm, modalFormResponse) -> {

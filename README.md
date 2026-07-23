@@ -52,6 +52,9 @@ A winner receives the original stake plus profit after tax. With `0%` tax, the p
 | Economy bridge | Vault; VaultUnlocked on Folia |
 | Economy provider | A provider compatible with the selected server and bridge |
 
+The plugin emits Java 21 bytecode. Minecraft/Paper/Folia 26.x servers themselves require Java 25;
+the compatibility matrix therefore builds on both JDK 21 and JDK 25.
+
 Optional integrations:
 
 - PlaceholderAPI.
@@ -87,7 +90,7 @@ Run checks separately with:
 
 ## Installation
 
-1. Install Java 21 and a compatible Paper/Folia server.
+1. Install Java 21 for 1.21.x, or Java 25 when required by a 26.x Paper/Folia server.
 2. Install Vault and an economy provider; on Folia, use a Folia-compatible bridge and provider.
 3. Copy `TaiXiu-3.0.0.jar` into `plugins/`.
 4. Start the server once to create the configuration and `plugins/TaiXiu/taixiu.db`.
@@ -165,6 +168,8 @@ Use `refund`, `retry`, `complete`, or `fail` only after checking the provider le
 | `/taixiu thongtin [session]` | Vietnamese alias for info |
 | `/taixiu rules` or `/taixiu luatchoi` | View the rules |
 | `/taixiu toggle` | Toggle the boss bar/notifications |
+| `/taixiu rollover <high\|low\|cashout>` | Use or withdraw a pending rollover escrow |
+| `/taixiu nhoi <tai\|xiu\|nhantien>` | Vietnamese rollover alias |
 
 ### Administrators — `taixiu.admin`
 
@@ -193,7 +198,10 @@ Action aliases:
 | `retry` | `thulai` |
 | `confirm` / `acknowledge` | `xacnhan` |
 
-Additional permission: `taixiu.tax.bypass` bypasses payout tax.
+Dynamic permissions: `taixiu.maxbet.<amount>` selects the highest granted bet tier and
+`taixiu.tax.discount.<points>` subtracts percentage points from payout tax. `taixiu.tax.bypass`
+still takes precedence. Rollover uses `taixiu.rollover`; loss-streak insurance uses
+`taixiu.insurance.claim`.
 
 ## Placeholders
 

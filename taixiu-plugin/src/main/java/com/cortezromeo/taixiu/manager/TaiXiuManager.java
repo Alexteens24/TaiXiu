@@ -16,13 +16,24 @@ import com.cortezromeo.taixiu.economy.CurrencyTransaction;
 import com.cortezromeo.taixiu.domain.DiceRules;
 import com.cortezromeo.taixiu.domain.PayoutCalculator;
 import com.cortezromeo.taixiu.storage.JournalEntry;
+import com.cortezromeo.taixiu.storage.BetMetadata;
+import com.cortezromeo.taixiu.storage.InsuranceSettings;
+import com.cortezromeo.taixiu.storage.RolloverOffer;
+import com.cortezromeo.taixiu.storage.SettlementPreparation;
 import com.cortezromeo.taixiu.storage.SessionData;
 import com.cortezromeo.taixiu.storage.SessionDataStorage;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.BetPermissionPolicy;
+import com.cortezromeo.taixiu.geyserform.RolloverGeyserForm;
 import me.clip.placeholderapi.PlaceholderAPI;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+import org.geysermc.floodgate.api.FloodgateApi;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -41,7 +52,7 @@ import static com.cortezromeo.taixiu.util.MessageUtil.sendMessage;
 public class TaiXiuManager {
 
     private static TaiXiuTask taiXiuTask = null;
-    private static final Set<UUID> pendingBets = new HashSet<>();
+    private static final Set<UUID> pendingBets = ConcurrentHashMap.newKeySet();
     private static final Map<Long, CompletableFuture<Boolean>> settlementFutures = new HashMap<>();
     private static final Set<String> healthBlocks = ConcurrentHashMap.newKeySet();
     private static final Set<CompletableFuture<Void>> inFlightCurrency = ConcurrentHashMap.newKeySet();
@@ -169,6 +180,7 @@ public class TaiXiuManager {
             throw new IllegalStateException("Cannot replace a session while transactions are in progress");
         getTaiXiuTask().setSession(sessionData);
         DatabaseManager.taiXiuData.put(sessionData.getSession(), sessionData);
+        SessionDataStorage.saveAsync(sessionData.getSession(), SessionData.copyOf(sessionData));
     }
 
     /**
@@ -198,15 +210,24 @@ public class TaiXiuManager {
         if (preEvent.isCancelled()) return;
         String playerName = player.getName();
         UUID playerId = player.getUniqueId();
-        boolean bypassTax = player.hasPermission("taixiu.tax.bypass");
+        FileConfiguration cfg = TaiXiu.plugin.getConfig();
+        double effectiveTax = BetPermissionPolicy.effectiveTax(player, cfg.getDouble("bet-settings.tax"));
+        long effectiveMaxBet = BetPermissionPolicy.effectiveMaxBet(player, cfg.getLong("bet-settings.max-bet"));
+        boolean rolloverEligible = cfg.getBoolean("rollover.enabled") && player.hasPermission("taixiu.rollover");
+        boolean insuranceEligible = cfg.getBoolean("insurance.enabled")
+                && player.hasPermission("taixiu.insurance.claim");
         if (!Bukkit.isGlobalTickThread()) {
-            TaiXiu.scheduler.runGlobal(() -> playerBetGlobal(player, playerId, playerName, bypassTax, money, result));
+            TaiXiu.scheduler.runGlobal(() -> playerBetGlobal(player, playerId, playerName, effectiveTax, effectiveMaxBet,
+                    rolloverEligible, insuranceEligible, money, result));
             return;
         }
-        playerBetGlobal(player, playerId, playerName, bypassTax, money, result);
+        playerBetGlobal(player, playerId, playerName, effectiveTax, effectiveMaxBet,
+                rolloverEligible, insuranceEligible, money, result);
     }
 
-    private static void playerBetGlobal(Player player, UUID playerId, String pName, boolean bypassTax,
+    private static void playerBetGlobal(Player player, UUID playerId, String pName, double effectiveTax,
+                                        long effectiveMaxBet,
+                                        boolean rolloverEligible, boolean insuranceEligible,
                                         long money, TaiXiuResult result) {
         ISession data = getSessionData();
         FileConfiguration cfg = TaiXiu.plugin.getConfig();
@@ -273,13 +294,12 @@ public class TaiXiuManager {
             return;
         }
 
-        long maxBet = cfg.getLong("bet-settings.max-bet");
         long providerSafeStake = gateway.maximumTransaction() / 2;
-        if (money > maxBet || money > providerSafeStake) {
+        if (money > effectiveMaxBet || money > providerSafeStake) {
             sendMessage(player, Messages.MAX_BET
                     .replace("%currencyName%", MessageUtil.getCurrencyName(data.getCurrencyType()))
                     .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(data.getCurrencyType()))
-                    .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(maxBet)));
+                    .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(effectiveMaxBet)));
             return;
         }
 
@@ -299,11 +319,13 @@ public class TaiXiuManager {
                         sendNotEnough(player, data);
                         return;
                     }
-                    beginDebit(player, playerId, pName, bypassTax, money, result, data, gateway, offlinePlayer);
+                    beginDebit(player, playerId, pName, effectiveTax, rolloverEligible, insuranceEligible,
+                            money, result, data, gateway, offlinePlayer);
                 }));
     }
 
-    private static void beginDebit(Player player, UUID playerId, String pName, boolean bypassTax, long money,
+    private static void beginDebit(Player player, UUID playerId, String pName, double effectiveTax,
+                                   boolean rolloverEligible, boolean insuranceEligible, long money,
                                    TaiXiuResult result, ISession data, CurrencyGateway gateway,
                                    org.bukkit.OfflinePlayer offlinePlayer) {
         UUID transactionId = UUID.randomUUID();
@@ -363,7 +385,8 @@ public class TaiXiuManager {
                                     return;
                                 }
                                 if (data instanceof SessionData sessionData)
-                                    sessionData.registerPlayer(pName, playerId, bypassTax);
+                                    sessionData.registerPlayer(pName, new BetMetadata(playerId, effectiveTax,
+                                            rolloverEligible, insuranceEligible, BetMetadata.FundingSource.WALLET, 0));
                                 if (result == TaiXiuResult.XIU) data.addXiuPlayer(pName, money);
                                 else data.addTaiPlayer(pName, money);
                                 SessionData snapshot = SessionData.copyOf(data);
@@ -492,6 +515,198 @@ public class TaiXiuManager {
 
     public static boolean hasPendingBets() {
         return !pendingBets.isEmpty();
+    }
+
+    public static CompletableFuture<Void> activateRolloverOffers(long targetSessionId, long expiresAt) {
+        return SessionDataStorage.activateRolloverOffersAsync(targetSessionId, expiresAt)
+                .thenRun(() -> TaiXiu.scheduler.runGlobal(() -> {
+                    for (Player player : Bukkit.getOnlinePlayers()) {
+                        SessionDataStorage.findAvailableRolloverAsync(player.getUniqueId(), targetSessionId)
+                                .thenAccept(found -> found.ifPresent(offer -> TaiXiu.scheduler.runEntity(player,
+                                        () -> sendRolloverPrompt(player, offer))));
+                    }
+                }));
+    }
+
+    public static void showRolloverOffer(Player player) {
+        long sessionId = getSessionData().getSession();
+        SessionDataStorage.findAvailableRolloverAsync(player.getUniqueId(), sessionId)
+                .thenAccept(found -> found.ifPresentOrElse(
+                        offer -> TaiXiu.scheduler.runEntity(player, () -> sendRolloverPrompt(player, offer)),
+                        () -> TaiXiu.scheduler.runEntity(player, () -> sendMessage(player, Messages.ROLLOVER_NOT_AVAILABLE))));
+    }
+
+    public static void rollover(Player player, TaiXiuResult side) {
+        if (!Bukkit.isOwnedByCurrentRegion(player)) {
+            TaiXiu.scheduler.runEntity(player, () -> rollover(player, side));
+            return;
+        }
+        if (side != TaiXiuResult.TAI && side != TaiXiuResult.XIU) {
+            cashoutRollover(player);
+            return;
+        }
+        if (!player.hasPermission("taixiu.rollover")) {
+            sendMessage(player, Messages.NO_PERMISSION);
+            return;
+        }
+        long targetSession = getSessionData().getSession();
+        int cutoff = TaiXiu.plugin.getConfig().getInt("bet-settings.disable-while-remaining");
+        if (getState() != TaiXiuState.PLAYING || getTimeLeft() <= cutoff) {
+            sendMessage(player, Messages.LATE_BET.replace("%time%", String.valueOf(getTimeLeft()))
+                    .replace("%configDisableTime%", String.valueOf(cutoff)));
+            return;
+        }
+        double tax = BetPermissionPolicy.effectiveTax(player,
+                TaiXiu.plugin.getConfig().getDouble("bet-settings.tax"));
+        long maxBet = BetPermissionPolicy.effectiveMaxBet(player,
+                TaiXiu.plugin.getConfig().getLong("bet-settings.max-bet"));
+        UUID playerId = player.getUniqueId();
+        if (!pendingBets.add(playerId)) return;
+        SessionDataStorage.findAvailableRolloverAsync(playerId, targetSession).whenComplete((found, lookupError) ->
+                TaiXiu.scheduler.runGlobal(() -> {
+                    if (lookupError != null || found.isEmpty()) {
+                        pendingBets.remove(playerId);
+                        sendMessage(player, Messages.ROLLOVER_NOT_AVAILABLE);
+                        return;
+                    }
+                    RolloverOffer offer = found.get();
+                    boolean scheduled = TaiXiu.scheduler.runEntity(player, () -> {
+                        PlayerBetPreEvent preEvent = new PlayerBetPreEvent(player, side, offer.amount());
+                        Bukkit.getPluginManager().callEvent(preEvent);
+                        if (preEvent.isCancelled()) {
+                            pendingBets.remove(playerId);
+                            return;
+                        }
+                        TaiXiu.scheduler.runGlobal(() -> consumeRolloverOffer(player, side, targetSession,
+                                tax, maxBet, offer));
+                    });
+                    if (!scheduled) pendingBets.remove(playerId);
+                }));
+    }
+
+    private static void consumeRolloverOffer(Player player, TaiXiuResult side, long targetSession,
+                                             double tax, long maxBet, RolloverOffer offer) {
+        UUID playerId = player.getUniqueId();
+        ISession session = getSessionData();
+        if (session.getSession() != targetSession || session.getTaiPlayerSnapshot().containsKey(player.getName())
+                || session.getXiuPlayerSnapshot().containsKey(player.getName())) {
+            pendingBets.remove(playerId);
+            sendMessage(player, Messages.ALREADY_BET
+                    .replace("%bet%", "-").replace("%money%", "-")
+                    .replace("%currencyName%", MessageUtil.getCurrencyName(session.getCurrencyType()))
+                    .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(session.getCurrencyType())));
+            return;
+        }
+        if (session.getCurrencyType() != offer.currency()) {
+            pendingBets.remove(playerId);
+            cashoutRollover(player);
+            return;
+        }
+        CurrencyGateway gateway = TaiXiu.currencies.gateway(offer.currency());
+        long payoutCap;
+        boolean payoutWithinCap;
+        try {
+            payoutCap = Math.multiplyExact(TaiXiu.plugin.getConfig().getLong("bet-settings.max-bet"),
+                    TaiXiu.plugin.getConfig().getLong("rollover.max-payout-multiplier", 10));
+            payoutWithinCap = PayoutCalculator.calculate(offer.amount(), tax, false) <= payoutCap;
+        } catch (ArithmeticException overflow) {
+            payoutWithinCap = false;
+        }
+        if (offer.amount() < TaiXiu.plugin.getConfig().getLong("bet-settings.min-bet")
+                || offer.amount() > maxBet || offer.amount() > gateway.maximumTransaction() / 2
+                || !payoutWithinCap) {
+            pendingBets.remove(playerId);
+            cashoutRollover(player);
+            return;
+        }
+        BetMetadata metadata = new BetMetadata(playerId, tax, true, false,
+                BetMetadata.FundingSource.ESCROW, offer.depth());
+        SessionDataStorage.consumeRolloverAsync(offer.id(), targetSession, side, metadata)
+                .whenComplete((consumed, consumeError) -> TaiXiu.scheduler.runGlobal(() -> {
+                    pendingBets.remove(playerId);
+                    if (consumeError != null || consumed.isEmpty()) {
+                        sendMessage(player, Messages.ROLLOVER_NOT_AVAILABLE);
+                        return;
+                    }
+                    if (session instanceof SessionData data) data.registerPlayer(player.getName(), metadata);
+                    if (side == TaiXiuResult.TAI) session.addTaiPlayer(player.getName(), offer.amount());
+                    else session.addXiuPlayer(player.getName(), offer.amount());
+                    completeAcceptedBet(player, player.getName(), offer.amount(), side, session);
+                    sendMessage(player, Messages.ROLLOVER_ACCEPTED
+                            .replace("%money%", MessageUtil.getFormatMoneyDisplay(offer.amount()))
+                            .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(offer.currency())));
+                }));
+    }
+
+    public static void cashoutRollover(Player player) {
+        UUID playerId = player.getUniqueId();
+        long targetSession = getSessionData().getSession();
+        if (!pendingBets.add(playerId)) return;
+        SessionDataStorage.prepareRolloverCashoutAsync(playerId, targetSession).whenComplete((prepared, error) -> {
+            if (error != null || prepared.isEmpty()) {
+                pendingBets.remove(playerId);
+                TaiXiu.scheduler.runEntity(player, () -> sendMessage(player, Messages.ROLLOVER_NOT_AVAILABLE));
+                return;
+            }
+            JournalEntry entry = prepared.get();
+            executeStandalonePayouts(List.of(new PayoutWork(entry, Messages.ROLLOVER_CASHED_OUT
+                            .replace("%money%", MessageUtil.getFormatMoneyDisplay(entry.amount()))
+                            .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(entry.currency())))))
+                    .whenComplete((ignored, payoutError) -> {
+                        pendingBets.remove(playerId);
+                        if (payoutError != null) markUnhealthy("ROLLOVER_CASHOUT_FAILURE");
+                    });
+        });
+    }
+
+    public static CompletableFuture<Void> expireRolloverOffers(long targetSessionId) {
+        return SessionDataStorage.expireRolloverOffersAsync(targetSessionId, System.currentTimeMillis())
+                .thenCompose(entries -> {
+                    if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
+                    entries.forEach(entry -> pendingBets.add(entry.playerId()));
+                    List<PayoutWork> work = entries.stream().map(entry -> new PayoutWork(entry,
+                            Messages.ROLLOVER_CASHED_OUT
+                                    .replace("%money%", MessageUtil.getFormatMoneyDisplay(entry.amount()))
+                                    .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(entry.currency())))).toList();
+                    return executeStandalonePayouts(work).whenComplete((ignored, error) -> {
+                        entries.forEach(entry -> pendingBets.remove(entry.playerId()));
+                        if (error != null) markUnhealthy("ROLLOVER_EXPIRY_FAILURE");
+                    });
+                });
+    }
+
+    private static CompletableFuture<Void> executeStandalonePayouts(List<PayoutWork> work) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        TaiXiu.scheduler.runGlobal(() -> executePreparedPayouts(work).whenComplete((ignored, error) -> {
+            if (error == null) result.complete(null); else result.completeExceptionally(error);
+        }));
+        return result;
+    }
+
+    private static void sendRolloverPrompt(Player player, RolloverOffer offer) {
+        String message = Messages.ROLLOVER_OFFER
+                .replace("%money%", MessageUtil.getFormatMoneyDisplay(offer.amount()))
+                .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(offer.currency()))
+                .replace("%session%", String.valueOf(offer.targetSessionId()));
+        if (TaiXiu.support.isFloodgateSupported()
+                && FloodgateApi.getInstance().isFloodgateId(player.getUniqueId())) {
+            sendMessage(player, message);
+            RolloverGeyserForm.openForm(player);
+            return;
+        }
+        String colored = TaiXiu.nms.addColor(message.replace("%prefix%", Messages.PREFIX));
+        boolean vietnamese = "vi".equals(Messages.locale);
+        Component prompt = LegacyComponentSerializer.legacySection().deserialize(colored)
+                .append(Component.newline())
+                .append(Component.text(vietnamese ? "[Tài]" : "[High]", NamedTextColor.RED)
+                        .clickEvent(ClickEvent.runCommand(vietnamese ? "/taixiu nhoi tai" : "/taixiu rollover high")))
+                .append(Component.space())
+                .append(Component.text(vietnamese ? "[Xỉu]" : "[Low]", NamedTextColor.GREEN)
+                        .clickEvent(ClickEvent.runCommand(vietnamese ? "/taixiu nhoi xiu" : "/taixiu rollover low")))
+                .append(Component.space())
+                .append(Component.text(vietnamese ? "[Nhận tiền]" : "[Cash out]", NamedTextColor.GOLD)
+                        .clickEvent(ClickEvent.runCommand(vietnamese ? "/taixiu nhoi nhantien" : "/taixiu rollover cashout")));
+        player.sendMessage(prompt);
     }
 
     public static CompletableFuture<Void> recoverPendingTransactionsAsync() {
@@ -670,24 +885,27 @@ public class TaiXiuManager {
         session.setDice3(dice3);
         session.setResult(outcome.result());
 
-        double tax = cfg.getDouble("bet-settings.tax");
         Map<String, Long> winners = session.getResult() == TaiXiuResult.XIU
                 ? session.getXiuPlayerSnapshot()
                 : session.getResult() == TaiXiuResult.TAI ? session.getTaiPlayerSnapshot() : Map.of();
-        List<PayoutWork> payoutWork;
+        SettlementPlan settlementPlan;
         try {
-            payoutWork = createPayoutWork(session, winners, session.getResult(), tax);
+            settlementPlan = createSettlementPlan(session, winners, session.getResult());
         } catch (RuntimeException exception) {
             session.setResult(TaiXiuResult.NONE);
             MessageUtil.throwErrorMessage("Could not calculate settlement #" + session.getSession() + ": " + exception);
             return CompletableFuture.completedFuture(false);
         }
 
-        List<JournalEntry> intents = payoutWork.stream().map(PayoutWork::entry).toList();
+        List<JournalEntry> intents = settlementPlan.payoutWork().stream().map(PayoutWork::entry).toList();
         CompletableFuture<Boolean> resultFuture = new CompletableFuture<>();
         settlementFutures.put(session.getSession(), resultFuture);
         resultFuture.whenComplete((result, error) -> settlementFutures.remove(session.getSession(), resultFuture));
-        SessionDataStorage.prepareSettlementAsync(SessionData.copyOf(session), intents)
+        InsuranceSettings insuranceSettings = new InsuranceSettings(cfg.getBoolean("insurance.enabled"),
+                cfg.getInt("insurance.losses-required", 3), cfg.getDouble("insurance.refund-percent", 20),
+                cfg.getLong("insurance.max-refund-per-24-hours", 1_000_000));
+        SessionDataStorage.prepareSettlementAsync(SessionData.copyOf(session), intents,
+                        settlementPlan.offers(), insuranceSettings)
                 .whenComplete((prepared, prepareError) -> TaiXiu.scheduler.runGlobal(() -> {
                     if (prepareError != null) {
                         session.setResult(TaiXiuResult.NONE);
@@ -696,7 +914,15 @@ public class TaiXiuManager {
                         resultFuture.complete(false);
                         return;
                     }
-                    finishPreparedSettlement(session, outcome.total(), payoutWork, resultFuture);
+                    List<PayoutWork> allPayouts = new ArrayList<>(settlementPlan.payoutWork());
+                    for (JournalEntry insurance : prepared.insurancePayouts()) {
+                        String message = Messages.INSURANCE_PAID
+                                .replace("%currencyName%", MessageUtil.getCurrencyName(insurance.currency()))
+                                .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(insurance.currency()))
+                                .replace("%money%", MessageUtil.getFormatMoneyDisplay(insurance.amount()));
+                        allPayouts.add(new PayoutWork(insurance, message));
+                    }
+                    finishPreparedSettlement(session, outcome.total(), allPayouts, resultFuture);
                 }));
         return resultFuture;
     }
@@ -807,17 +1033,24 @@ public class TaiXiuManager {
         }
     }
 
-    private static List<PayoutWork> createPayoutWork(ISession sessionData, Map<String, Long> players,
-                                                      TaiXiuResult result, double tax) {
+    private static SettlementPlan createSettlementPlan(ISession sessionData, Map<String, Long> players,
+                                                        TaiXiuResult result) {
         List<PayoutWork> work = new ArrayList<>();
+        List<RolloverOffer> offers = new ArrayList<>();
+        FileConfiguration cfg = TaiXiu.plugin.getConfig();
+        double configuredTax = cfg.getDouble("bet-settings.tax");
+        int maxDepth = cfg.getInt("rollover.max-consecutive", 3);
+        long payoutCap = Math.multiplyExact(cfg.getLong("bet-settings.max-bet"),
+                cfg.getLong("rollover.max-payout-multiplier", 10));
         for (Map.Entry<String, Long> entry : players.entrySet()) {
             String player = entry.getKey();
             long stake = entry.getValue();
             String message;
 
-            boolean bypassTax = sessionData instanceof SessionData data && data.hasTaxBypass(player);
-            double playerTax = bypassTax ? 0 : tax;
-            long money = PayoutCalculator.calculate(stake, tax, bypassTax);
+            BetMetadata metadata = sessionData instanceof SessionData data ? data.getBetMetadata(player) : null;
+            double playerTax = metadata == null || Double.isNaN(metadata.effectiveTax())
+                    ? configuredTax : metadata.effectiveTax();
+            long money = PayoutCalculator.calculate(stake, playerTax, false);
 
             if (playerTax > 0) {
                 message = Messages.SESSION_PLAYER_WIN_WITH_TAX
@@ -833,13 +1066,28 @@ public class TaiXiuManager {
                         .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(sessionData.getCurrencyType()))
                         .replace("%money%", MessageUtil.getFormatMoneyDisplay(money));
             }
-            UUID playerId = sessionData instanceof SessionData data ? data.getPlayerId(player) : null;
+            UUID playerId = metadata == null ? null : metadata.playerId();
             if (playerId == null) playerId = Bukkit.getOfflinePlayer(player).getUniqueId();
-            String journalId = UUID.randomUUID().toString();
-            work.add(new PayoutWork(new JournalEntry(journalId, sessionData.getSession(), playerId, player,
-                    sessionData.getCurrencyType(), "PAYOUT", money), message));
+            boolean offerRollover = cfg.getBoolean("rollover.enabled") && metadata != null
+                    && metadata.rolloverEligible() && metadata.rolloverDepth() < maxDepth;
+            if (offerRollover) {
+                try {
+                    offerRollover = PayoutCalculator.calculate(money, playerTax, false) <= payoutCap;
+                } catch (ArithmeticException overflow) {
+                    offerRollover = false;
+                }
+            }
+            if (offerRollover) {
+                offers.add(new RolloverOffer(UUID.randomUUID().toString(), sessionData.getSession(),
+                        sessionData.getSession() + 1, playerId, player, sessionData.getCurrencyType(), money,
+                        metadata.rolloverDepth() + 1, 0, "PENDING_TARGET", null));
+            } else {
+                String journalId = UUID.randomUUID().toString();
+                work.add(new PayoutWork(new JournalEntry(journalId, sessionData.getSession(), playerId, player,
+                        sessionData.getCurrencyType(), "PAYOUT", money).withContext("SESSION_WIN"), message));
+            }
         }
-        return work;
+        return new SettlementPlan(work, offers);
     }
 
     private static CompletableFuture<Void> executePreparedPayouts(List<PayoutWork> payoutWork) {
@@ -900,6 +1148,7 @@ public class TaiXiuManager {
     }
 
     private record PayoutWork(JournalEntry entry, String message) { }
+    private record SettlementPlan(List<PayoutWork> payoutWork, List<RolloverOffer> offers) { }
     private record RecoveryState(String status, String error) { }
 
     private static final class EntitySchedulerRetiredException extends IllegalStateException {

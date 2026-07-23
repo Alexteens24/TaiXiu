@@ -294,7 +294,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
             sendMessage(sender, "&eUnresolved transactions: " + filtered.size() + " (page " + safePage + "/" + pages + ")");
             filtered.stream().skip((long) (safePage - 1) * pageSize).limit(pageSize).forEach(entry -> sendMessage(sender,
                     "&7" + entry.id() + " &f" + entry.kind() + " &e" + entry.status()
-                            + " &7" + entry.playerName() + " " + entry.amount()));
+                            + " &7" + entry.playerName() + " " + entry.amount() + " &8" + entry.context()));
         }));
     }
 

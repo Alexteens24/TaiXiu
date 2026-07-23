@@ -58,6 +58,9 @@ Never call `join()` or `get()` from a Paper tick thread or Folia region/entity t
 
 Do not perform blocking I/O from an event handler. Provider or database uncertainty can cause settlement futures to fail and health-lock the game; addons must not automatically retry `UNKNOWN` transactions.
 
+Escrow-funded rollover bets pass through `PlayerBetPreEvent` with the complete escrow stake and emit
+`PlayerBetEvent` after the atomic escrow-to-bet transition, just like wallet-funded accepted bets.
+
 ## Migrating from 2.x
 
 Deprecated methods remain temporarily to support source migration, not to preserve old synchronous behavior. Read the full [API 3.0 migration guide](/api-v3-migration) before updating an addon.

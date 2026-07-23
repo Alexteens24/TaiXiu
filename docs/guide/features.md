@@ -10,6 +10,7 @@ TaiXiu combines a familiar three-dice game with operational safeguards designed 
 - Inventory menus, boss bars, sounds, and optional Floodgate forms.
 - English and Vietnamese message packs.
 - Historical session inspection and PlaceholderAPI output.
+- Permission-based max-bet/tax tiers, opt-in escrow rollover, and transparent loss-streak insurance.
 
 ## Reliability
 
@@ -35,4 +36,4 @@ TaiXiu combines a familiar three-dice game with operational safeguards designed 
 
 ## Tooling
 
-The fork targets Java 21 and Paper API 1.21.4+, uses Gradle Kotlin DSL with dependency locking, and runs unit tests plus JaCoCo checks in GitHub Actions. Dependabot monitors Gradle, npm, and GitHub Actions dependencies.
+The fork emits Java 21 bytecode and targets Paper API 1.21.4+; CI validates the same build on JDK 21 and 25. The runtime checklist covers legacy 1.21.4 servers and recorded Paper/Folia 26.x builds. Dependabot monitors Gradle, npm, and GitHub Actions dependencies.

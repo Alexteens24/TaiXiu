@@ -20,6 +20,9 @@ Command and alias badges below can be clicked to copy them. Vietnamese aliases u
   <CommandRow commands="/taixiu toggle" permission="taixiu.use">
     Toggle TaiXiu notifications and boss bar visibility for the player.
   </CommandRow>
+  <CommandRow commands="/taixiu rollover &lt;high|low|cashout&gt;" aliases="/taixiu nhoi &lt;tai|xiu|nhantien&gt;" permission="taixiu.rollover">
+    Roll the complete escrow payout into the next session or credit it to the wallet.
+  </CommandRow>
 </ReferenceTable>
 
 ## Administration

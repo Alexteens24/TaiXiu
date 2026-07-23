@@ -3,6 +3,7 @@ package com.cortezromeo.taixiu.listener;
 import com.cortezromeo.taixiu.TaiXiu;
 import com.cortezromeo.taixiu.manager.BossBarManager;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
+import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -25,6 +26,7 @@ public class PlayerJoinListener implements Listener {
             DatabaseManager.togglePlayers.add(p.getName());
             BossBarManager.toggleBossBar(p);
         }
+        if (TaiXiuManager.getTaiXiuTask() != null) TaiXiuManager.showRolloverOffer(p);
 
     }
 }

@@ -4,12 +4,14 @@
 
 | Component | Requirement |
 |---|---|
-| Java | 21 |
+| Java | 21 for 1.21.x; 25 for 26.x servers |
 | Server | Paper 1.21.4+ or a compatible Folia build |
 | Economy bridge | Vault; VaultUnlocked on Folia |
 | Economy provider | Compatible with the selected server and bridge |
 
 Optional plugins include PlaceholderAPI, PlayerPoints, Floodgate/Geyser, and a Discord webhook endpoint.
+
+The TaiXiu artifact remains Java 21 bytecode; the higher runtime is imposed by the 26.x server.
 
 ::: warning Folia stack
 `folia-supported: true` only permits TaiXiu to load. The Vault bridge and economy provider must independently support Folia and should be validated on a temporary server.

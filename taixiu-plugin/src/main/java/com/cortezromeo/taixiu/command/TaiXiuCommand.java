@@ -10,6 +10,7 @@ import com.cortezromeo.taixiu.manager.BossBarManager;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.BetPermissionPolicy;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -58,7 +59,10 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                         string = string.replace("%minBet%", MessageUtil.getFormatMoneyDisplay(cfg.getLong("bet-settings.min-bet")))
                                 .replace("%currencyName%", MessageUtil.getCurrencyName(TaiXiuManager.getSessionData().getCurrencyType()))
                                 .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(TaiXiuManager.getSessionData().getCurrencyType()))
-                                .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(cfg.getLong("bet-settings.max-bet")));
+                                .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(
+                                        BetPermissionPolicy.effectiveMaxBet(p, cfg.getLong("bet-settings.max-bet"))))
+                                .replace("%tax%", String.valueOf(BetPermissionPolicy.effectiveTax(p,
+                                        cfg.getDouble("bet-settings.tax"))));
                         sendMessage(p, string);
                     }
                     return false;
@@ -77,6 +81,10 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                     }
                     BossBarManager.toggleBossBar(p);
                     return false;
+                case "rollover":
+                case "nhoi":
+                    TaiXiuManager.showRolloverOffer(p);
+                    return true;
                 default:
                     sendMessage(p, Messages.WRONG_ARGUMENT);
                     return false;
@@ -85,6 +93,23 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
 
         if (args.length == 2) {
             switch (args[0].toLowerCase()) {
+                case "rollover":
+                case "nhoi":
+                    String choice = args[1].toLowerCase();
+                    boolean high = choice.equals("high") || choice.equals("tai") || choice.equals("tài");
+                    boolean low = choice.equals("low") || choice.equals("xiu") || choice.equals("xỉu");
+                    if ((high || low) && !p.hasPermission("taixiu.rollover")) {
+                        sendMessage(p, Messages.NO_PERMISSION);
+                        return true;
+                    }
+                    if (high)
+                        TaiXiuManager.rollover(p, TaiXiuResult.TAI);
+                    else if (low)
+                        TaiXiuManager.rollover(p, TaiXiuResult.XIU);
+                    else if (choice.equals("cashout") || choice.equals("nhantien") || choice.equals("nhận-tiền"))
+                        TaiXiuManager.cashoutRollover(p);
+                    else sendMessage(p, Messages.WRONG_ARGUMENT);
+                    return true;
                 case "info":
                 case "thongtin":
                     Long session;
@@ -176,10 +201,12 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                 commands.add("luatchoi");
                 commands.add("cuoc");
                 commands.add("thongtin");
+                commands.add("nhoi");
             } else {
                 commands.add("bet");
                 commands.add("rules");
                 commands.add("info");
+                commands.add("rollover");
             }
             commands.add("toggle");
             StringUtil.copyPartialMatches(args[0], commands, completions);
@@ -192,6 +219,11 @@ public class TaiXiuCommand implements CommandExecutor, TabExecutor {
                     commands.add("low");
                     commands.add("high");
                 }
+            }
+            if (args[0].equalsIgnoreCase("nhoi")) {
+                commands.add("tai"); commands.add("xiu"); commands.add("nhantien");
+            } else if (args[0].equalsIgnoreCase("rollover")) {
+                commands.add("high"); commands.add("low"); commands.add("cashout");
             }
             StringUtil.copyPartialMatches(args[1], commands, completions);
         }

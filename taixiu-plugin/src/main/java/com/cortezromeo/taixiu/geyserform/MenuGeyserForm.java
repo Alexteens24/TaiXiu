@@ -44,6 +44,9 @@ public class MenuGeyserForm {
         buttonData.put(5, new ButtonData(geyserFormFile.getString(stringPath + "button.toggle.off.name")
                 , FormImage.Type.valueOf(geyserFormFile.getString(stringPath + "button.toggle.off.imageType"))
                 , geyserFormFile.getString(stringPath + "button.toggle.off.imageData")));
+        buttonData.put(6, new ButtonData(geyserFormFile.getString(stringPath + "button.rollover.name", "&6Nhồi cược")
+                , FormImage.Type.valueOf(geyserFormFile.getString(stringPath + "button.rollover.imageType", "URL"))
+                , geyserFormFile.getString(stringPath + "button.rollover.imageData", "https://i.imgur.com/ReMGrcW.png")));
     }
 
     private static boolean checkTogglePlayer(Player player) {
@@ -51,11 +54,15 @@ public class MenuGeyserForm {
     }
 
     public static void openForm(Player player) {
-        SimpleForm form = SimpleForm.builder().title(TaiXiu.nms.addColor(title))
+        boolean showRollover = TaiXiu.plugin.getConfig().getBoolean("rollover.enabled")
+                && player.hasPermission("taixiu.rollover");
+        SimpleForm.Builder builder = SimpleForm.builder().title(TaiXiu.nms.addColor(title))
                 .button(buttonData.get(1).getButtonName(), buttonData.get(1).getButtonImageType(), buttonData.get(1).getButtonImageData())
                 .button(buttonData.get(2).getButtonName(), buttonData.get(2).getButtonImageType(), buttonData.get(2).getButtonImageData())
-                .button(buttonData.get(3).getButtonName(), buttonData.get(3).getButtonImageType(), buttonData.get(3).getButtonImageData())
-                .button(
+                .button(buttonData.get(3).getButtonName(), buttonData.get(3).getButtonImageType(), buttonData.get(3).getButtonImageData());
+        if (showRollover) builder.button(buttonData.get(6).getButtonName(),
+                buttonData.get(6).getButtonImageType(), buttonData.get(6).getButtonImageData());
+        SimpleForm form = builder.button(
                         (checkTogglePlayer(player) ? buttonData.get(5).getButtonName() : buttonData.get(4).getButtonName()),
                         (checkTogglePlayer(player) ? buttonData.get(5).getButtonImageType() : buttonData.get(4).getButtonImageType()),
                         (checkTogglePlayer(player) ? buttonData.get(5).getButtonImageData() : buttonData.get(4).getButtonImageData())
@@ -82,7 +89,13 @@ public class MenuGeyserForm {
                         fgPlayer.sendForm(BetGeyserForm.getForm(player));
                     }
 
-                    if (clickedButtonID == 3) {
+                    if (showRollover && clickedButtonID == 3) {
+                        RolloverGeyserForm.openForm(player);
+                        return;
+                    }
+
+                    int toggleButtonId = showRollover ? 4 : 3;
+                    if (clickedButtonID == toggleButtonId) {
                         List<String> togglePlayers = DatabaseManager.togglePlayers;
                         if (togglePlayers.contains(player.getName())) {
                             togglePlayers.remove(player.getName());

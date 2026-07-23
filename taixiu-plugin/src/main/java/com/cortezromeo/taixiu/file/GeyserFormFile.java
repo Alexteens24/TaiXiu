@@ -81,6 +81,9 @@ public class GeyserFormFile {
         get().addDefault(menuForm + "button.toggle.off.name", "&4Tắt&0 thông báo");
         get().addDefault(menuForm + "button.toggle.off.imageType", "URL");
         get().addDefault(menuForm + "button.toggle.off.imageData", "https://i.imgur.com/3pDJQgt.png");
+        get().addDefault(menuForm + "button.rollover.name", "&6Nhồi cược");
+        get().addDefault(menuForm + "button.rollover.imageType", "URL");
+        get().addDefault(menuForm + "button.rollover.imageData", "https://i.imgur.com/ReMGrcW.png");
 
         String ruleForm = "form.rule.";
         get().addDefault(ruleForm + "title", "&0Luật chơi tài xỉu");
@@ -91,6 +94,7 @@ public class GeyserFormFile {
                 "&fKhi tổng các nút là &e3&f hoặc &e18&f thì nhà cái ăn (Tài, xỉu đều thua)\n" +
                 "&fSố tiền cược tối thiểu là &6$%minBet%\n" +
                 "&fSố tiền cược tối đa là &6$%maxBet%\n" +
+                "&fThuế payout hiệu lực của bạn là &e%tax%%\n" +
                 "&fKhi thắng bạn sẽ nhận được gấp đôi số tiền đã đặt (1 ăn 1)");
         get().addDefault(ruleForm + "button.goBack.name", "&cTrở về");
         get().addDefault(ruleForm + "button.close.name", "&4Đóng");
@@ -120,6 +124,13 @@ public class GeyserFormFile {
         get().addDefault(betForm + "order.2.dropdown.options.xiu", "&2Xỉu");
         get().addDefault(betForm + "order.3.input.name", "Số tiền muốn cược:");
         get().addDefault(betForm + "order.3.input.placeholder", "%minBet% - %maxBet%");
+
+        String rolloverForm = "form.rollover.";
+        get().addDefault(rolloverForm + "title", "Nhồi cược");
+        get().addDefault(rolloverForm + "content", "Chọn cửa cho phiên kế tiếp hoặc nhận tiền về ví.");
+        get().addDefault(rolloverForm + "button.tai", "&4Nhồi Tài");
+        get().addDefault(rolloverForm + "button.xiu", "&2Nhồi Xỉu");
+        get().addDefault(rolloverForm + "button.cashout", "&6Nhận tiền");
 
         get().options().copyDefaults(true);
         save();

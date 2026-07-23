@@ -29,3 +29,9 @@ permissions:
   taixiu.tax.bypass:
     description: Receive winnings without tax
     default: op
+  taixiu.rollover:
+    description: Hold winnings in escrow and roll them into the next session
+    default: true
+  taixiu.insurance.claim:
+    description: Receive configured wallet-funded loss streak insurance
+    default: false

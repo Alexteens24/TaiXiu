@@ -56,6 +56,12 @@ messages:
   session-player-win: '%prefix%&fYou bet on %result%&f and won %currencySymbol%%money%&f.'
   session-player-win-with-tax: '%prefix%&fYou bet on %result%&f and won %currencySymbol%%money%&f. &c&l(TAX: %tax%%)'
   session-player-lose: '%prefix%&fYou bet on %result%&f and lost %currencySymbol%%money%&f.'
+  rollover:
+    offer: '%prefix%&e%currencySymbol%%money% is safely held for session #%session%. Use /taixiu rollover high|low|cashout before betting closes.'
+    accepted: '%prefix%&aRolled %currencySymbol%%money% into the next session.'
+    cashed-out: '%prefix%&aEscrow payout of %currencySymbol%%money% was credited.'
+    not-available: '%prefix%&cYou do not have an available rollover offer.'
+  insurance-paid: '%prefix%&aLoss-streak insurance credited %currencySymbol%%money% %currencyName%.'
   command:
     taixiu:
       message:
@@ -68,6 +74,7 @@ messages:
         - '&#03c6fc/taixiu bet &6<low(1)/high(2)> <amount&6> &7- &fPlace a bet'
         - '&#03c6fc/taixiu info &7- &fView current session info'
         - '&#03c6fc/taixiu info &e(session number) &7- &fView info for specific session'
+        - '&#03c6fc/taixiu rollover &6<high/low/cashout> &7- &fUse or withdraw a rollover escrow'
         - ' '
         - ' &6<>&7: Required &7| &e()&7: Optional'
     luatchoi:
@@ -80,6 +87,7 @@ messages:
         - '&fIf total is &e3&f or &e18&f, the house wins (both bets lose).'
         - '&fMinimum %currencyName%&r bet: %currencySymbol%%minBet%&f.'
         - '&fMaximum %currencyName%&r bet: %currencySymbol%%maxBet%&f.'
+        - '&fYour effective payout tax: &e%tax%%&f.'
         - '&fWin doubles the %currencyName%&f placed (1 to 1 payout).'
         - '&aGood luck!'
     taixiuadmin:
