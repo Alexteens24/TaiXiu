@@ -212,18 +212,21 @@ public class TaiXiuManager {
         UUID playerId = player.getUniqueId();
         FileConfiguration cfg = TaiXiu.plugin.getConfig();
         double effectiveTax = BetPermissionPolicy.effectiveTax(player, cfg.getDouble("bet-settings.tax"));
+        long effectiveMaxBet = BetPermissionPolicy.effectiveMaxBet(player, cfg.getLong("bet-settings.max-bet"));
         boolean rolloverEligible = cfg.getBoolean("rollover.enabled") && player.hasPermission("taixiu.rollover");
         boolean insuranceEligible = cfg.getBoolean("insurance.enabled")
                 && player.hasPermission("taixiu.insurance.claim");
         if (!Bukkit.isGlobalTickThread()) {
-            TaiXiu.scheduler.runGlobal(() -> playerBetGlobal(player, playerId, playerName, effectiveTax,
+            TaiXiu.scheduler.runGlobal(() -> playerBetGlobal(player, playerId, playerName, effectiveTax, effectiveMaxBet,
                     rolloverEligible, insuranceEligible, money, result));
             return;
         }
-        playerBetGlobal(player, playerId, playerName, effectiveTax, rolloverEligible, insuranceEligible, money, result);
+        playerBetGlobal(player, playerId, playerName, effectiveTax, effectiveMaxBet,
+                rolloverEligible, insuranceEligible, money, result);
     }
 
     private static void playerBetGlobal(Player player, UUID playerId, String pName, double effectiveTax,
+                                        long effectiveMaxBet,
                                         boolean rolloverEligible, boolean insuranceEligible,
                                         long money, TaiXiuResult result) {
         ISession data = getSessionData();
@@ -291,13 +294,12 @@ public class TaiXiuManager {
             return;
         }
 
-        long maxBet = BetPermissionPolicy.effectiveMaxBet(player, cfg.getLong("bet-settings.max-bet"));
         long providerSafeStake = gateway.maximumTransaction() / 2;
-        if (money > maxBet || money > providerSafeStake) {
+        if (money > effectiveMaxBet || money > providerSafeStake) {
             sendMessage(player, Messages.MAX_BET
                     .replace("%currencyName%", MessageUtil.getCurrencyName(data.getCurrencyType()))
                     .replace("%currencySymbol%", MessageUtil.getCurrencySymbol(data.getCurrencyType()))
-                    .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(maxBet)));
+                    .replace("%maxBet%", MessageUtil.getFormatMoneyDisplay(effectiveMaxBet)));
             return;
         }
 
