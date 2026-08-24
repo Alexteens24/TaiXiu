@@ -5,6 +5,7 @@ import com.cortezromeo.taixiu.api.TaiXiuResult;
 import com.cortezromeo.taixiu.api.storage.ISession;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -189,7 +190,8 @@ public class DiscordSupport implements AutoCloseable {
 
         string = string.replace("%playerName%", playerName)
                 .replace("%playerUUID%", playerId.toString())
-                .replace("%currencyName%", TaiXiu.nms.stripColor(MessageUtil.getCurrencyName(session.getCurrencyType())))
+                .replace("%currencyName%", TextFormatter.plain(
+                        MessageUtil.getCurrencyName(session.getCurrencyType())))
                 .replace("%money%", MessageUtil.getFormatMoneyDisplay(money))
                 .replace("%bet%", resultFormatted)
                 .replace("%date%", simpleDateFormat.format(new Date()));
@@ -244,7 +246,8 @@ public class DiscordSupport implements AutoCloseable {
                 .replace("%dice2%", String.valueOf(session.getDice2()))
                 .replace("%dice3%", String.valueOf(session.getDice3()))
                 .replace("%totalPoint%", String.valueOf(session.getDice1() + session.getDice2() + session.getDice3()))
-                .replace("%currencyName%", TaiXiu.nms.stripColor(MessageUtil.getCurrencyName(session.getCurrencyType())))
+                .replace("%currencyName%", TextFormatter.plain(
+                        MessageUtil.getCurrencyName(session.getCurrencyType())))
                 .replace("%result%", resultFormatted)
                 .replace("%bestWinners%", bestWinnersFormatted);
         return string;

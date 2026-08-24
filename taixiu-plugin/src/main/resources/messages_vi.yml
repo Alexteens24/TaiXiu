@@ -15,7 +15,8 @@
 #  Lưu ý:
 #  * Bạn có thể chỉnh thành '' nếu muốn tắt dòng message đó
 #    đối với list thì chỉ cần một dòng (- '') là được
-#  * Có hỗ trợ hex color
+#  * Định dạng tuân theo text-format trong config.yml (LEGACY hoặc MINIMESSAGE)
+#  * File mặc định này chủ động giữ mã màu Legacy
 #  * Nhớ thêm dấu cách vào '' thành ' ' nếu bạn cho dòng đó
 #    không có gì nhưng ý của bạn là xuống dòng
 

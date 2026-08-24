@@ -1,6 +1,6 @@
 package com.cortezromeo.taixiu.manager;
 
-import com.cortezromeo.taixiu.TaiXiu;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.Bukkit;
 
 public class DebugManager {
@@ -18,6 +18,7 @@ public class DebugManager {
     public static void debug(String prefix, String message) {
         if (!debug)
             return;
-        Bukkit.getConsoleSender().sendMessage(TaiXiu.nms.addColor("&6[TAI XIU DEBUG] &e" + prefix.toUpperCase() + " >>> " + message));
+        Bukkit.getConsoleSender().sendMessage(TextFormatter.legacyComponent(
+                "&6[TAI XIU DEBUG] &e" + prefix.toUpperCase() + " >>> " + message));
     }
 }

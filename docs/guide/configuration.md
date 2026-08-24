@@ -6,8 +6,9 @@ TaiXiu creates `plugins/TaiXiu/config.yml` on first startup. Most gameplay and i
 
 | Key | Default | Description |
 |---|---:|---|
-| `config-version` | `4` | Internal configuration schema version. Do not edit manually. |
+| `config-version` | `5` | Internal configuration schema version. Do not edit manually. |
 | `debug` | `false` | Enables verbose diagnostic logging. Use only while investigating a problem. |
+| `text-format` | `LEGACY` | Global syntax for configurable UI text: `LEGACY` or `MINIMESSAGE`. |
 | `locale` | `en` | Message pack: `en` or `vi`. This does not affect session IDs or stored balances. |
 | `placeholder-history-loading-value` | `...` | First value returned while an uncached historical placeholder loads asynchronously. |
 | `format-money` | `#,###` | Java `DecimalFormat` pattern used for displayed amounts. |
@@ -109,7 +110,23 @@ An empty `webhookURL` disables Discord delivery. Webhook work uses a bounded que
 The `sound` section controls the win/lose Bukkit sound name, volume, and pitch. The `boss-bar` section controls titles, colors, styles, the settlement display, and its duration. Message text lives in `messages_en.yml` and `messages_vi.yml`; inventory layout lives in `sessioninfoinventory.yml`.
 
 ::: tip Formatting
-Boss bar and message strings support legacy color codes and the formats already used by the bundled configuration. Keep placeholder names intact when translating text.
+`text-format` applies globally to messages, boss bars, currency display names/symbols, inventory text, and Geyser forms. The bundled files remain Legacy for upgrade compatibility:
+
+```yaml
+text-format: LEGACY
+# Examples: '&cRed', '&#03c6fcSky'
+```
+
+To use MiniMessage, convert all configurable UI strings before changing the mode:
+
+```yaml
+text-format: MINIMESSAGE
+# Examples: '<red>Red</red>', '<gradient:#03c6fc:#1fc433>Gradient</gradient>'
+```
+
+MiniMessage chat supports the standard tags, including click and hover events. Boss bars, inventories, and Geyser forms receive colors and decorations through a legacy-string bridge, so interactive events do not apply there. Keep placeholder names such as `%prefix%` and `%money%` intact when translating text. `/taixiuadmin reload` applies a mode change.
+
+PlaceholderAPI output is inserted as literal text after the configured template is parsed. Tags and legacy color codes returned by an expansion are therefore displayed literally and cannot create formatting or interactive events. PlaceholderAPI tokens are not resolved inside MiniMessage tag arguments; use trusted, static configuration for click commands and other tag arguments. Messages already queued for an entity scheduler keep the text mode captured before a reload.
 :::
 
 ## Reload behavior

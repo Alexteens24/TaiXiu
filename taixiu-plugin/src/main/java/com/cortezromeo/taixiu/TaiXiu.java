@@ -22,6 +22,7 @@ import com.cortezromeo.taixiu.scheduler.SchedulerService;
 import com.cortezromeo.taixiu.storage.SessionDataStorage;
 import com.cortezromeo.taixiu.support.Support;
 import com.cortezromeo.taixiu.support.version.cross.CrossVersionSupport;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import com.tchristofferson.configupdater.ConfigUpdater;
 import org.bukkit.Bukkit;
 import org.bukkit.boss.BarColor;
@@ -63,6 +64,8 @@ public final class TaiXiu extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        TextFormatter.configure(getConfig().getString("text-format", "LEGACY"),
+                message -> getLogger().warning(message));
         initLanguages();
         setDebug(getConfig().getBoolean("debug"));
 
@@ -191,6 +194,12 @@ public final class TaiXiu extends JavaPlugin {
 
     public boolean validateConfig() {
         boolean valid = true;
+        try {
+            TextFormatter.Mode.parse(getConfig().getString("text-format", "LEGACY"));
+        } catch (IllegalArgumentException exception) {
+            getLogger().severe("text-format must be LEGACY or MINIMESSAGE");
+            valid = false;
+        }
         String retention = getConfig().getString("database.retention.mode", "ALL").toUpperCase(Locale.ROOT);
         if (!Set.of("ALL", "DAYS", "COUNT").contains(retention)) {
             getLogger().severe("database.retention.mode must be ALL, DAYS, or COUNT");

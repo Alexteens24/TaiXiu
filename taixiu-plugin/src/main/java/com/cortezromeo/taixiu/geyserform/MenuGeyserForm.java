@@ -6,6 +6,7 @@ import com.cortezromeo.taixiu.language.Messages;
 import com.cortezromeo.taixiu.manager.BossBarManager;
 import com.cortezromeo.taixiu.manager.DatabaseManager;
 import com.cortezromeo.taixiu.manager.TaiXiuManager;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.geysermc.cumulus.form.SimpleForm;
@@ -56,7 +57,7 @@ public class MenuGeyserForm {
     public static void openForm(Player player) {
         boolean showRollover = TaiXiu.plugin.getConfig().getBoolean("rollover.enabled")
                 && player.hasPermission("taixiu.rollover");
-        SimpleForm.Builder builder = SimpleForm.builder().title(TaiXiu.nms.addColor(title))
+        SimpleForm.Builder builder = SimpleForm.builder().title(TextFormatter.legacy(title))
                 .button(buttonData.get(1).getButtonName(), buttonData.get(1).getButtonImageType(), buttonData.get(1).getButtonImageData())
                 .button(buttonData.get(2).getButtonName(), buttonData.get(2).getButtonImageType(), buttonData.get(2).getButtonImageData())
                 .button(buttonData.get(3).getButtonName(), buttonData.get(3).getButtonImageType(), buttonData.get(3).getButtonImageData());

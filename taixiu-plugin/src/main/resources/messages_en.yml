@@ -15,7 +15,8 @@
 #  Note:
 #  * You can set it to '' to disable the message line
 #    for lists, just one line (- '') is enough
-#  * Hex color codes supported
+#  * Formatting follows config.yml text-format (LEGACY or MINIMESSAGE)
+#  * This bundled file intentionally uses Legacy color codes
 #  * If you want an empty line but still want a line break,
 #    use ' ' (space inside quotes)
 

@@ -14,6 +14,7 @@ import com.cortezromeo.taixiu.storage.SessionDataStorage;
 import com.cortezromeo.taixiu.economy.VaultCurrencyGateway;
 import com.cortezromeo.taixiu.economy.PlayerPointsCurrencyGateway;
 import com.cortezromeo.taixiu.util.MessageUtil;
+import com.cortezromeo.taixiu.util.TextFormatter;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -63,7 +64,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                         TaiXiuManager.setState(TaiXiuState.PAUSING);
                     } else {
                         if (!TaiXiuManager.isHealthy()) {
-                            sendMessage(sender, "&cCannot resume while health-lock is active: "
+                            sendLegacyMessage(sender, "&cCannot resume while health-lock is active: "
                                     + TaiXiuManager.healthSummary());
                             return true;
                         }
@@ -76,7 +77,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     return false;
                 case "health":
                 case "suckhoe":
-                    sendMessage(sender, TaiXiuManager.isHealthy()
+                    sendLegacyMessage(sender, TaiXiuManager.isHealthy()
                             ? "&aTaiXiu health: HEALTHY"
                             : "&cTaiXiu health-lock: " + TaiXiuManager.healthSummary());
                     return true;
@@ -84,9 +85,11 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                     TaiXiu.plugin.reloadConfig();
                     if (!TaiXiu.plugin.validateConfig()) {
                         TaiXiuManager.markUnhealthy("INVALID_CONFIGURATION");
-                        sendMessage(sender, "&cInvalid config. TaiXiu has been paused; check the console.");
+                        sendLegacyMessage(sender, "&cInvalid config. TaiXiu has been paused; check the console.");
                         return true;
                     }
+                    TextFormatter.configure(TaiXiu.plugin.getConfig().getString("text-format", "LEGACY"),
+                            message -> TaiXiu.plugin.getLogger().warning(message));
                     Messages.setupValue(TaiXiu.plugin.getConfig().getString("locale"));
                     GeyserFormFile.reload();
                     if (!TaiXiu.plugin.getConfig().getBoolean("boss-bar.enabled")) {
@@ -146,7 +149,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                         if (TaiXiuManager.hasPendingBets()
                                 || !TaiXiuManager.getSessionData().getTaiPlayerSnapshot().isEmpty()
                                 || !TaiXiuManager.getSessionData().getXiuPlayerSnapshot().isEmpty()) {
-                            sendMessage(sender, "&cCurrency cannot be changed after betting has started.");
+                            sendLegacyMessage(sender, "&cCurrency cannot be changed after betting has started.");
                             return true;
                         }
                         if (currencyTyppe == CurrencyTyppe.PLAYERPOINTS)
@@ -169,7 +172,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                 case "transaction":
                 case "giaodich":
                     if (!isAlias(args[1], "list", "danhsach")) {
-                        sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach");
+                        sendLegacyMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach");
                         return true;
                     }
                     listTransactions(sender, 1, null);
@@ -177,11 +180,11 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                 case "health":
                 case "suckhoe":
                     if (!isAlias(args[1], "acknowledge", "xacnhan")) {
-                        sendMessage(sender, "&cUsage: /taixiuadmin health|suckhoe acknowledge|xacnhan");
+                        sendLegacyMessage(sender, "&cUsage: /taixiuadmin health|suckhoe acknowledge|xacnhan");
                         return true;
                     }
                     TaiXiuManager.acknowledgeHealth(sender.getName());
-                    sendMessage(sender, "&eHealth-lock cleared. Use changestate to resume after verifying providers/database.");
+                    sendLegacyMessage(sender, "&eHealth-lock cleared. Use changestate to resume after verifying providers/database.");
                     return true;
                 default:
                     sendMessage(sender, Messages.WRONG_ARGUMENT);
@@ -196,27 +199,27 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                 String status = args.length > 3 ? args[3].toUpperCase(Locale.ROOT) : null;
                 listTransactions(sender, page, status);
             } catch (NumberFormatException exception) {
-                sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach [page] [status]");
+                sendLegacyMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich list|danhsach [page] [status]");
             }
             return true;
         }
 
         if (args.length >= 4 && isAlias(args[0], "transaction", "giaodich")) {
             if (!isAlias(args[3], "confirm", "xacnhan")) {
-                sendMessage(sender, "&cReconciliation changes money/state. Append confirm|xacnhan to execute it.");
+                sendLegacyMessage(sender, "&cReconciliation changes money/state. Append confirm|xacnhan to execute it.");
                 return true;
             }
             String reason = args.length > 4
                     ? String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length))
                     : "Manual reconciliation via command";
             TaiXiuManager.reconcileTransaction(args[1], normalizeAction(args[2]), sender.getName(), reason)
-                    .whenComplete((result, error) -> TaiXiu.scheduler.runGlobal(() -> sendMessage(sender,
+                    .whenComplete((result, error) -> TaiXiu.scheduler.runGlobal(() -> sendLegacyMessage(sender,
                             error == null ? "&e" + result : "&c" + error.getMessage())));
             return true;
         }
 
         if (args.length == 3 && isAlias(args[0], "transaction", "giaodich")) {
-            sendMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich <id> <action> confirm|xacnhan [reason]");
+            sendLegacyMessage(sender, "&cUsage: /taixiuadmin transaction|giaodich <id> <action> confirm|xacnhan [reason]");
             return true;
         }
 
@@ -224,7 +227,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "setresult":
                     if (TaiXiuManager.getSessionData().getResult() != TaiXiuResult.NONE) {
-                        sendMessage(sender, "%prefix%&ePlease wait a few seconds before you can use this command again!");
+                        sendLegacyMessage(sender, "%prefix%&ePlease wait a few seconds before you can use this command again!");
                         return false;
                     }
                     try {
@@ -241,7 +244,7 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
                         TaiXiuManager.resultSeasonAsync(session, dice1, dice2, dice3).whenComplete((settled, error) ->
                                 TaiXiu.scheduler.runGlobal(() -> {
                                     if (error != null || !Boolean.TRUE.equals(settled)) {
-                                        sendMessage(sender, "&cCould not settle the session; TaiXiu has been paused. Check the console.");
+                                        sendLegacyMessage(sender, "&cCould not settle the session; TaiXiu has been paused. Check the console.");
                                         return;
                                     }
                                     sendMessage(sender, Messages.COMMAND_TAIXIUADMIN_SETRESULT
@@ -272,18 +275,24 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
     }
 
     public void sendMessage(CommandSender sender, String message) {
-        String formatted = TaiXiu.nms.addColor(message.replace("%prefix%", Messages.COMMAND_TAIXIUADMIN_PREFIX));
-        if (sender instanceof Player player && !Bukkit.isOwnedByCurrentRegion(player)) {
-            TaiXiu.scheduler.runEntity(player, () -> player.sendMessage(formatted));
-            return;
-        }
-        sender.sendMessage(formatted);
+        MessageUtil.sendComponent(sender, TextFormatter.component(
+                message.replace("%prefix%", Messages.COMMAND_TAIXIUADMIN_PREFIX)));
+    }
+
+    private void sendLegacyMessage(CommandSender sender, String message) {
+        boolean prefixed = message.contains("%prefix%");
+        String body = message.replace("%prefix%", "");
+        var component = prefixed
+                ? TextFormatter.component(Messages.COMMAND_TAIXIUADMIN_PREFIX)
+                    .append(TextFormatter.legacyComponent(body))
+                : TextFormatter.legacyComponent(body);
+        MessageUtil.sendComponent(sender, component);
     }
 
     private void listTransactions(CommandSender sender, int page, String status) {
         SessionDataStorage.unresolvedJournalAsync().whenComplete((entries, error) -> TaiXiu.scheduler.runGlobal(() -> {
             if (error != null) {
-                sendMessage(sender, "&cCould not load transactions: " + error.getMessage());
+                sendLegacyMessage(sender, "&cCould not load transactions: " + error.getMessage());
                 return;
             }
             var filtered = entries.stream()
@@ -291,8 +300,8 @@ public class TaiXiuAdminCommand implements CommandExecutor, TabExecutor {
             int pageSize = 20;
             int pages = Math.max(1, (filtered.size() + pageSize - 1) / pageSize);
             int safePage = Math.min(page, pages);
-            sendMessage(sender, "&eUnresolved transactions: " + filtered.size() + " (page " + safePage + "/" + pages + ")");
-            filtered.stream().skip((long) (safePage - 1) * pageSize).limit(pageSize).forEach(entry -> sendMessage(sender,
+            sendLegacyMessage(sender, "&eUnresolved transactions: " + filtered.size() + " (page " + safePage + "/" + pages + ")");
+            filtered.stream().skip((long) (safePage - 1) * pageSize).limit(pageSize).forEach(entry -> sendLegacyMessage(sender,
                     "&7" + entry.id() + " &f" + entry.kind() + " &e" + entry.status()
                             + " &7" + entry.playerName() + " " + entry.amount() + " &8" + entry.context()));
         }));
